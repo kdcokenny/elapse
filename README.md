@@ -22,59 +22,59 @@ It solves the **Translation Gap**:
 - **Diff-Aware Intelligence:** It doesn't trust commit messages. It reads the code diffs to understand what actually changed.
 - **Zero Metrics:** No commit counting. No velocity tracking. No spyware. Just visibility.
 - **Real-Time Ingestion:** Processes webhooks instantly via Redis queues; no massive API bursts in the morning.
-- **Self-Hostable:** Runs on your VPS with a single `docker-compose up`.
+- **One-Click Setup:** No manual GitHub App configuration. Just deploy and click a button.
+- **Self-Hostable:** Runs on your VPS with a single `docker compose up`.
 - **Model Agnostic:** Supports Google Gemini (default), OpenAI, Anthropic via Vercel AI SDK.
 
-## Quick Start (Self-Hosted)
+## Quick Start
 
-### Prerequisites
+### Option 1: Standard Docker
 
-- [Bun](https://bun.sh) v1.1+ (or Docker)
-- Redis
-- A GitHub App
+Use `compose.yml` for general Docker deployments (VPS, local, etc.).
 
-### 1. Clone and Configure
+1. **Create a `.env` file:**
 
 ```bash
-git clone https://github.com/yourusername/elapse.git
-cd elapse
-cp .env.example .env
+GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
+PROJECT_CONTEXT=A fleet tracking platform with GPS and real-time notifications
 ```
 
-Edit `.env` with your credentials:
-- `APP_ID`, `PRIVATE_KEY`, `WEBHOOK_SECRET` - from your GitHub App
-- `GOOGLE_GENERATIVE_AI_API_KEY` - your Gemini API key
-- `DISCORD_WEBHOOK_URL` - where to post standups
-- `PROJECT_CONTEXT` - describe your product (e.g., "A dental SaaS platform")
-
-### 2. Run with Docker
+2. **Download and run:**
 
 ```bash
-docker-compose up -d
+curl -O https://raw.githubusercontent.com/kdcokenny/elapse/main/compose.yml
+docker compose up -d
 ```
 
-### 3. Create GitHub App
+3. **Register GitHub App:**
 
-1. Go to [GitHub Developer Settings](https://github.com/settings/apps)
-2. Create a new GitHub App with:
-   - **Webhook URL:** `https://your-domain.com/api/github/webhooks`
-   - **Permissions:**
-     - Repository contents: Read
-     - Metadata: Read
-   - **Subscribe to events:** Push
-3. Generate a private key and add it to `.env`
-4. Install the app on your repositories
+Visit `http://localhost:3000`, click **"Register GitHub App"**, and install on your repos.
+
+### Option 2: Dokploy
+
+Use `compose.dokploy.yml` for [Dokploy](https://dokploy.com) deployments.
+
+1. Create a new Docker Compose service in Dokploy
+2. Paste the contents of `compose.dokploy.yml`
+3. Add environment variables in the Environment tab
+4. Deploy
+5. Configure domain in the Domains tab
+6. Visit your domain and complete the one-click GitHub App setup
 
 ## Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PROJECT_CONTEXT` | Describes your product so AI understands business value | `"A software project"` |
-| `TEAM_TIMEZONE` | Timezone for the 9 AM report (IANA format) | `America/New_York` |
-| `SCHEDULE` | Cron expression for reports | `0 9 * * 1-5` (9 AM Mon-Fri) |
-| `DISCORD_WEBHOOK_URL` | Where to post the standup | Required |
-| `LLM_MODEL_NAME` | AI model to use | `gemini-flash-latest` |
-| `LOG_LEVEL` | Logging verbosity | `info` |
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Your Gemini API key | Yes |
+| `DISCORD_WEBHOOK_URL` | Where to post the standup | Yes |
+| `PROJECT_CONTEXT` | Describes your product so AI understands business value | No |
+| `TEAM_TIMEZONE` | Timezone for reports (IANA format) | No (default: `America/New_York`) |
+| `SCHEDULE` | Cron expression for reports | No (default: `0 9 * * 1-5`) |
+| `LLM_MODEL_NAME` | AI model to use | No (default: `gemini-flash-latest`) |
+| `LOG_LEVEL` | Logging verbosity | No (default: `info`) |
+
+GitHub App credentials (`APP_ID`, `PRIVATE_KEY`, `WEBHOOK_SECRET`) are automatically configured via the one-click setup and stored in Redis.
 
 ## Architecture
 

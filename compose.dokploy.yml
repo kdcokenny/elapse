@@ -1,47 +1,54 @@
+# Elapse - Dokploy Docker Compose
+# Optimized for Dokploy deployments
+# Configure domain via Dokploy UI (Domains tab)
+# Docs: https://github.com/kdcokenny/elapse
+
 services:
   elapse:
-    build: .
+    image: ghcr.io/kdcokenny/elapse:alpha
+    pull_policy: always
     restart: always
-    ports:
-      - "${PORT:-3000}:3000"
+    expose:
+      - "3000"
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
       - PORT=3000
-      # GitHub App credentials (from .env)
-      - APP_ID=${APP_ID}
-      - PRIVATE_KEY=${PRIVATE_KEY}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      # AI configuration
+      # Required
       - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      # Optional
       - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gemini-flash-latest}
-      # Elapse configuration
       - PROJECT_CONTEXT=${PROJECT_CONTEXT:-A software project}
       - TEAM_TIMEZONE=${TEAM_TIMEZONE:-America/New_York}
       - SCHEDULE=${SCHEDULE:-0 9 * * 1-5}
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
+    networks:
+      - dokploy-network
 
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     restart: always
-    command: redis-server --appendonly yes
+    command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy allkeys-lru
     volumes:
-      - redis_data:/data
+      - ../files/elapse-redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - dokploy-network
 
-volumes:
-  redis_data:
+networks:
+  dokploy-network:
+    external: true
