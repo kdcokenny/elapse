@@ -6,19 +6,23 @@
 import { Queue } from "bullmq";
 import { Probot, Server } from "probot";
 import { logger } from "./logger";
-import { loadCredentials, redis, type StoredCredentials } from "./redis";
+import { redis } from "./redis";
 import { createReportWorker, setupReportScheduler } from "./reporter";
 import { createSetupServer } from "./setup";
 import { initShutdownHandlers, registerShutdownHandler } from "./shutdown";
 import { createWebhookApp } from "./webhook";
 import { createWorker, QUEUE_NAME } from "./worker";
 
+interface Credentials {
+	appId: string;
+	privateKey: string;
+	webhookSecret: string;
+}
+
 /**
- * Get credentials from environment variables or Redis.
- * Priority: env vars > Redis
+ * Get credentials from environment variables.
  */
-async function getCredentials(): Promise<StoredCredentials | null> {
-	// Priority 1: Environment variables (for traditional deployments)
+function getCredentials(): Credentials | null {
 	if (process.env.APP_ID && process.env.PRIVATE_KEY) {
 		return {
 			appId: process.env.APP_ID,
@@ -26,30 +30,16 @@ async function getCredentials(): Promise<StoredCredentials | null> {
 			webhookSecret: process.env.WEBHOOK_SECRET || "",
 		};
 	}
-
-	// Priority 2: Redis (for Docker one-click setup)
-	const stored = await loadCredentials();
-	if (stored) {
-		// Populate process.env for modules that read directly from it (worker.ts)
-		process.env.APP_ID = stored.appId;
-		process.env.PRIVATE_KEY = stored.privateKey;
-		process.env.WEBHOOK_SECRET = stored.webhookSecret;
-		return stored;
-	}
-
 	return null;
 }
 
 /**
  * Start in setup mode - show GitHub App registration UI.
  */
-async function startSetupMode(port: number) {
+function startSetupMode(port: number) {
 	logger.info("No credentials found, entering setup mode...");
 
-	const server = createSetupServer(port, () => {
-		logger.info("Setup complete. Restarting to apply credentials...");
-		process.exit(0);
-	});
+	const server = createSetupServer(port);
 
 	// Register shutdown handler for the setup server
 	registerShutdownHandler(async () => {
@@ -68,14 +58,14 @@ async function startSetupMode(port: number) {
 	server.listen(port, "0.0.0.0", () => {
 		logger.info({ port }, "Elapse is in SETUP MODE");
 		logger.info(`Visit http://localhost:${port} to configure GitHub App`);
-		logger.info("After setup, the server will automatically restart");
+		logger.info("After setup, copy credentials to env vars and redeploy");
 	});
 }
 
 /**
  * Start in normal mode - process webhooks and generate reports.
  */
-async function startNormalMode(credentials: StoredCredentials, port: number) {
+async function startNormalMode(credentials: Credentials, port: number) {
 	logger.info("Credentials found, starting in normal mode...");
 
 	// Create BullMQ queue
@@ -191,12 +181,12 @@ async function main() {
 
 	const port = parseInt(process.env.PORT || "3000", 10);
 
-	// Get credentials (env vars first, then Redis)
-	const credentials = await getCredentials();
+	// Get credentials from environment variables
+	const credentials = getCredentials();
 
 	if (!credentials) {
 		// No credentials - enter setup mode
-		await startSetupMode(port);
+		startSetupMode(port);
 	} else {
 		// Credentials available - normal operation
 		await startNormalMode(credentials, port);
