@@ -1,0 +1,31 @@
+# Secrets and environment
+.env
+.env.*
+*.pem
+credentials.json
+
+# Git
+.git
+.gitignore
+
+# Dependencies (rebuilt in container)
+node_modules/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+
+# Development
+docker-compose.yml
+docker-compose*.yml
+*.md
+tests/
+*.test.ts
+.github/
+worktrees/
+coverage/
+*.log
