@@ -1,0 +1,47 @@
+services:
+  elapse:
+    build: .
+    restart: always
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+      # GitHub App credentials (from .env)
+      - APP_ID=${APP_ID}
+      - PRIVATE_KEY=${PRIVATE_KEY}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      # AI configuration
+      - GOOGLE_GENERATIVE_AI_API_KEY=${GOOGLE_GENERATIVE_AI_API_KEY}
+      - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gemini-flash-latest}
+      # Elapse configuration
+      - PROJECT_CONTEXT=${PROJECT_CONTEXT:-A software project}
+      - TEAM_TIMEZONE=${TEAM_TIMEZONE:-America/New_York}
+      - SCHEDULE=${SCHEDULE:-0 9 * * 1-5}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  redis:
+    image: redis:alpine
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  redis_data:

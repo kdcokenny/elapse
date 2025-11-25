@@ -1,0 +1,44 @@
+{
+	"ref": "refs/heads/main",
+	"repository": {
+		"id": 123456789,
+		"name": "test-repo",
+		"full_name": "test-owner/test-repo",
+		"owner": {
+			"login": "test-owner"
+		}
+	},
+	"sender": {
+		"login": "johndoe",
+		"type": "User"
+	},
+	"installation": {
+		"id": 12345678
+	},
+	"commits": [
+		{
+			"id": "abc123def456789012345678901234567890abcd",
+			"message": "Add user authentication feature",
+			"author": {
+				"name": "John Doe",
+				"email": "john@example.com",
+				"username": "johndoe"
+			},
+			"added": ["src/auth.ts", "src/middleware/auth.ts"],
+			"modified": ["src/index.ts"],
+			"removed": []
+		},
+		{
+			"id": "def456abc789012345678901234567890abcdef",
+			"message": "Fix login validation bug",
+			"author": {
+				"name": "John Doe",
+				"email": "john@example.com",
+				"username": "johndoe"
+			},
+			"added": [],
+			"modified": ["src/auth.ts"],
+			"removed": []
+		}
+	]
+}
