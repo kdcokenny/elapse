@@ -9,9 +9,6 @@ dist/
 .env.local
 .env.*.local
 
-# Bun
-bun.lock
-
 # IDE
 .idea/
 .vscode/
