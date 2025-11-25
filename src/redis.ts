@@ -29,6 +29,40 @@ redis.on("reconnecting", () => logger.info("Redis reconnecting"));
 
 const KEY_PREFIX = "elapse";
 const TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
+const CREDENTIALS_KEY = `${KEY_PREFIX}:config:credentials`;
+
+// GitHub App credentials stored in Redis (for Docker deployments)
+export interface StoredCredentials {
+	appId: string;
+	privateKey: string;
+	webhookSecret: string;
+}
+
+/**
+ * Store GitHub App credentials in Redis.
+ * Called after GitHub manifest flow completes.
+ */
+export async function storeCredentials(
+	credentials: StoredCredentials,
+): Promise<void> {
+	await redis.hset(CREDENTIALS_KEY, credentials);
+}
+
+/**
+ * Load GitHub App credentials from Redis.
+ * Returns null if not configured.
+ */
+export async function loadCredentials(): Promise<StoredCredentials | null> {
+	const data = await redis.hgetall(CREDENTIALS_KEY);
+	if (!data.appId || !data.privateKey || !data.webhookSecret) {
+		return null;
+	}
+	return {
+		appId: data.appId,
+		privateKey: data.privateKey,
+		webhookSecret: data.webhookSecret,
+	};
+}
 
 /**
  * Generate key for daily translations list.
