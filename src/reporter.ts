@@ -148,7 +148,7 @@ async function processReportJob(
 
 		return { sent: true };
 	} catch (error) {
-		log.error({ error }, "Report job failed");
+		log.error({ err: error }, "Report job failed");
 		throw error;
 	}
 }
@@ -212,7 +212,7 @@ export function createReportWorker(): Worker<ReportJob> {
 
 	worker.on("failed", (job, error) => {
 		if (job?.name === "report") {
-			reportLogger.error({ jobId: job.id, error }, "Report job failed");
+			reportLogger.error({ jobId: job.id, err: error }, "Report job failed");
 		}
 	});
 

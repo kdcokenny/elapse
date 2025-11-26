@@ -151,6 +151,6 @@ async function main() {
 
 // Run
 main().catch((error) => {
-	logger.fatal({ error }, "Failed to start Elapse");
+	logger.fatal({ err: error }, "Failed to start Elapse");
 	process.exit(1);
 });

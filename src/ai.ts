@@ -61,7 +61,7 @@ export async function translateDiff(
 			throw new AIProviderTimeoutError(AI_TIMEOUT_MS, error as Error);
 		}
 
-		log.error({ error }, "Translation failed");
+		log.error({ err: error }, "Translation failed");
 		throw new AIProviderError(
 			`AI translation failed: ${(error as Error).message}`,
 			undefined,
@@ -117,7 +117,7 @@ export async function narrateDay(
 			throw new AIProviderTimeoutError(AI_TIMEOUT_MS, error as Error);
 		}
 
-		log.error({ error }, "Narration failed");
+		log.error({ err: error }, "Narration failed");
 		throw new AIProviderError(
 			`AI narration failed: ${(error as Error).message}`,
 			undefined,

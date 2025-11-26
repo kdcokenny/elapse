@@ -120,7 +120,7 @@ async function processDigestJob(
 	} catch (error) {
 		// Non-retryable errors should fail immediately
 		if (error instanceof NonRetryableError) {
-			log.warn({ error }, "Non-retryable error, failing job");
+			log.warn({ err: error }, "Non-retryable error, failing job");
 			throw new UnrecoverableError((error as Error).message);
 		}
 
@@ -139,7 +139,7 @@ async function processDigestJob(
 		}
 
 		// Let BullMQ retry other errors
-		log.error({ error }, "Error processing commit, will retry");
+		log.error({ err: error }, "Error processing commit, will retry");
 		throw error;
 	}
 }
@@ -168,7 +168,7 @@ export function createWorker(): Worker<DigestJob> {
 		workerLogger.error(
 			{
 				jobId: job?.id,
-				error,
+				err: error,
 				attempts: job?.attemptsMade,
 			},
 			"Job failed",
@@ -180,7 +180,7 @@ export function createWorker(): Worker<DigestJob> {
 	});
 
 	worker.on("error", (error) => {
-		workerLogger.error({ error }, "Worker error");
+		workerLogger.error({ err: error }, "Worker error");
 	});
 
 	workerLogger.info("Digest worker started");

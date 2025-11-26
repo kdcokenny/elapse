@@ -118,7 +118,7 @@ export function createWebhookApp(queue: Queue) {
 				);
 			} catch (error) {
 				// Log but don't throw - webhook must return 200
-				log.error({ error }, "Failed to process push event");
+				log.error({ err: error }, "Failed to process push event");
 			}
 		});
 

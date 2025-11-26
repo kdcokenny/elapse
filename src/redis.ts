@@ -21,7 +21,7 @@ export const redis = new Redis(REDIS_URL, {
 // Log connection events
 redis.on("connect", () => logger.info("Redis connected"));
 redis.on("ready", () => logger.info("Redis ready"));
-redis.on("error", (err) => logger.error({ error: err }, "Redis error"));
+redis.on("error", (err) => logger.error({ err }, "Redis error"));
 redis.on("close", () => logger.warn("Redis connection closed"));
 redis.on("reconnecting", () => logger.info("Redis reconnecting"));
 

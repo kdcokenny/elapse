@@ -46,7 +46,10 @@ async function shutdown(signal: string): Promise<void> {
 			try {
 				await handler();
 			} catch (error) {
-				logger.error({ error, handlerIndex: i }, "Shutdown handler failed");
+				logger.error(
+					{ err: error, handlerIndex: i },
+					"Shutdown handler failed",
+				);
 			}
 		}
 
@@ -54,7 +57,7 @@ async function shutdown(signal: string): Promise<void> {
 		logger.info("Graceful shutdown complete");
 		process.exit(0);
 	} catch (error) {
-		logger.error({ error }, "Error during shutdown");
+		logger.error({ err: error }, "Error during shutdown");
 		process.exit(1);
 	}
 }
@@ -68,7 +71,7 @@ export function initShutdownHandlers(): void {
 
 	// Handle uncaught errors
 	process.on("uncaughtException", (error) => {
-		logger.fatal({ error }, "Uncaught exception");
+		logger.fatal({ err: error }, "Uncaught exception");
 		shutdown("uncaughtException");
 	});
 
