@@ -28,39 +28,28 @@ It solves the **Translation Gap**:
 
 ## Quick Start
 
-### Option 1: Standard Docker
-
-Use `compose.yml` for general Docker deployments (VPS, local, etc.).
-
-1. **Create a `.env` file:**
+### Option 1: Docker
 
 ```bash
-GOOGLE_GENERATIVE_AI_API_KEY=your-gemini-api-key
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-PROJECT_CONTEXT=A fleet tracking platform with GPS and real-time notifications
-```
-
-2. **Download and run:**
-
-```bash
-curl -O https://raw.githubusercontent.com/kdcokenny/elapse/main/compose.yml
+git clone https://github.com/kdcokenny/elapse.git
+cd elapse/deploy/docker
+cp ../../.env.example .env
+# Edit .env with your values
 docker compose up -d
 ```
 
-3. **Register GitHub App:**
+Visit `http://localhost:3000` to complete the GitHub App setup.
 
-Visit `http://localhost:3000`, click **"Register GitHub App"**, and install on your repos.
+See [`deploy/docker/`](./deploy/docker/) for the full guide.
 
 ### Option 2: Dokploy
 
-Use `compose.dokploy.yml` for [Dokploy](https://dokploy.com) deployments.
+1. Create a Docker Compose service in Dokploy
+2. Set compose file to `deploy/dokploy/compose.yml`
+3. Add environment variables
+4. Deploy and configure domain
 
-1. Create a new Docker Compose service in Dokploy
-2. Paste the contents of `compose.dokploy.yml`
-3. Add environment variables in the Environment tab
-4. Deploy
-5. Configure domain in the Domains tab
-6. Visit your domain and complete the one-click GitHub App setup
+See [`deploy/dokploy/`](./deploy/dokploy/) for the full guide.
 
 ## Configuration
 
@@ -74,7 +63,18 @@ Use `compose.dokploy.yml` for [Dokploy](https://dokploy.com) deployments.
 | `LLM_MODEL_NAME` | AI model to use | No (default: `gemini-flash-latest`) |
 | `LOG_LEVEL` | Logging verbosity | No (default: `info`) |
 
-GitHub App credentials (`APP_ID`, `PRIVATE_KEY`, `WEBHOOK_SECRET`) are automatically configured via the one-click setup and saved to your `.env` file.
+GitHub App credentials (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_WEBHOOK_SECRET`) are configured via the one-click setup wizard.
+
+## Deployment
+
+Elapse requires long-running processes and Redis. See the [`deploy/`](./deploy/) directory for platform-specific guides:
+
+| Platform | Guide |
+|----------|-------|
+| Docker | [`deploy/docker/`](./deploy/docker/) |
+| Dokploy | [`deploy/dokploy/`](./deploy/dokploy/) |
+
+More platforms may be added in the future.
 
 ## Architecture
 

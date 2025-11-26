@@ -6,6 +6,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { translateDiff } from "./ai";
+import { getPrivateKey } from "./credentials";
 import { DiffTooLargeError, GitHubAPIError, NonRetryableError } from "./errors";
 import { workerLogger } from "./logger";
 import { redis, storeTranslation } from "./redis";
@@ -28,11 +29,13 @@ function hasStatus(error: unknown): error is { status: number } {
  * Create an authenticated Octokit instance for an installation.
  */
 function getOctokit(installationId: number): Octokit {
-	const appId = process.env.APP_ID;
-	const privateKey = process.env.PRIVATE_KEY;
+	const appId = process.env.GITHUB_APP_ID;
+	const privateKey = getPrivateKey();
 
 	if (!appId || !privateKey) {
-		throw new Error("Missing APP_ID or PRIVATE_KEY environment variables");
+		throw new Error(
+			"Missing GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY environment variables",
+		);
 	}
 
 	return new Octokit({

@@ -6,6 +6,7 @@
 import { createServer, type Server as HttpServer } from "node:http";
 import { Queue } from "bullmq";
 import { createNodeMiddleware, createProbot } from "probot";
+import { type Credentials, getCredentials } from "./credentials";
 import { logger } from "./logger";
 import { redis } from "./redis";
 import { createReportWorker, setupReportScheduler } from "./reporter";
@@ -13,26 +14,6 @@ import { createSetupServer } from "./setup";
 import { initShutdownHandlers, registerShutdownHandler } from "./shutdown";
 import { createWebhookApp } from "./webhook";
 import { createWorker, QUEUE_NAME } from "./worker";
-
-interface Credentials {
-	appId: string;
-	privateKey: string;
-	webhookSecret: string;
-}
-
-/**
- * Get credentials from environment variables.
- */
-function getCredentials(): Credentials | null {
-	if (process.env.APP_ID && process.env.PRIVATE_KEY) {
-		return {
-			appId: process.env.APP_ID,
-			privateKey: process.env.PRIVATE_KEY,
-			webhookSecret: process.env.WEBHOOK_SECRET || "",
-		};
-	}
-	return null;
-}
 
 /**
  * Start in setup mode - show GitHub App registration UI.

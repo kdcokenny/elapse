@@ -54,14 +54,22 @@ function generateManifest(baseUrl: string): string {
 
 /**
  * Generate .env content for credentials.
+ * Uses new GITHUB_ prefixed variable names.
  */
 function generateEnvContent(app: ManifestResponse): string {
 	return `
 # Elapse GitHub App Credentials (auto-generated)
-APP_ID=${app.id}
-WEBHOOK_SECRET=${app.webhook_secret}
-PRIVATE_KEY="${app.pem}"
+GITHUB_APP_ID=${app.id}
+GITHUB_WEBHOOK_SECRET=${app.webhook_secret}
+GITHUB_APP_PRIVATE_KEY="${app.pem}"
 `;
+}
+
+/**
+ * Generate base64-encoded private key for Docker environments.
+ */
+function generateBase64Key(pem: string): string {
+	return Buffer.from(pem).toString("base64");
 }
 
 /**
@@ -157,13 +165,14 @@ function getSetupPage(manifest: string): string {
 
 /**
  * Generate the success page after credentials are saved to .env.
- * Shows confirmation, View toggle for credentials, and install button.
+ * Shows confirmation, View toggle for credentials, base64 key for Docker, and install button.
  */
 function getSuccessPage(
 	app: ManifestResponse,
 	envWriteSuccess: boolean,
 ): string {
 	const envContent = generateEnvContent(app).trim();
+	const base64Key = generateBase64Key(app.pem);
 
 	// Escape for HTML textarea
 	const escapedEnvContent = envContent
@@ -176,7 +185,7 @@ function getSuccessPage(
 
 	const statusMessage = envWriteSuccess
 		? `<span class="text-green-700">Credentials saved to .env</span>`
-		: `<span class="text-amber-700">Could not write to .env - copy credentials below</span>`;
+		: `<span class="text-blue-700">Copy credentials below to your environment</span>`;
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -198,20 +207,52 @@ function getSuccessPage(
       <h1 class="text-2xl font-bold text-gray-900">GitHub App Created!</h1>
     </div>
 
+    <!-- Docker/Dokploy: Base64 credentials (recommended) -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+      <div class="flex items-center gap-2 mb-3">
+        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path>
+        </svg>
+        <span class="font-semibold text-blue-900">For Docker / Dokploy</span>
+      </div>
+      <p class="text-sm text-blue-800 mb-3">Copy these values to your environment variables:</p>
+      <div class="space-y-2 font-mono text-xs">
+        <div class="flex items-center gap-2">
+          <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_APP_ID</code>
+          <code class="bg-white border border-blue-200 px-2 py-1 rounded flex-1 truncate">${app.id}</code>
+          <button onclick="copyToClipboard('${app.id}', this)" class="text-blue-600 hover:text-blue-800 text-xs">Copy</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_WEBHOOK_SECRET</code>
+          <code class="bg-white border border-blue-200 px-2 py-1 rounded flex-1 truncate">${app.webhook_secret}</code>
+          <button onclick="copyToClipboard('${app.webhook_secret}', this)" class="text-blue-600 hover:text-blue-800 text-xs">Copy</button>
+        </div>
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_APP_PRIVATE_KEY</code>
+            <span class="text-blue-600 text-xs">(base64 encoded)</span>
+            <button onclick="copyToClipboard(base64Key, this)" class="text-blue-600 hover:text-blue-800 text-xs ml-auto">Copy</button>
+          </div>
+          <textarea readonly class="w-full bg-white border border-blue-200 rounded p-2 h-16 resize-none text-xs">${base64Key}</textarea>
+        </div>
+      </div>
+    </div>
+
     <!-- Credentials status with View toggle -->
     <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2">
-          <svg class="w-5 h-5 ${envWriteSuccess ? "text-green-600" : "text-amber-600"}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${envWriteSuccess ? "M5 13l4 4L19 7" : "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"}"></path>
+          <svg class="w-5 h-5 ${envWriteSuccess ? "text-green-600" : "text-blue-600"}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${envWriteSuccess ? "M5 13l4 4L19 7" : "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"}"></path>
           </svg>
           ${statusMessage}
         </div>
-        <button id="view-toggle" onclick="toggleCredentials()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">${envWriteSuccess ? "View" : "Hide"}</button>
+        <button id="view-toggle" onclick="toggleCredentials()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">View raw</button>
       </div>
 
-      <!-- Collapsible credentials textarea -->
-      <div id="credentials-section" class="${envWriteSuccess ? "hidden" : ""} mt-4">
+      <!-- Collapsible raw credentials textarea -->
+      <div id="credentials-section" class="hidden mt-4">
+        <p class="text-xs text-gray-500 mb-2">Raw .env format (for local development):</p>
         <textarea readonly class="w-full font-mono text-xs p-3 bg-gray-50 border border-gray-200 rounded-lg h-40 resize-none">${escapedEnvContent}</textarea>
         <button onclick="copyCredentials()" id="copy-btn" class="mt-2 text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -254,6 +295,7 @@ function getSuccessPage(
 
   <script>
     const envContent = \`${jsEnvContent}\`;
+    const base64Key = \`${base64Key}\`;
 
     function toggleCredentials() {
       const section = document.getElementById('credentials-section');
@@ -262,10 +304,10 @@ function getSuccessPage(
 
       if (isHidden) {
         section.classList.remove('hidden');
-        toggle.textContent = 'Hide';
+        toggle.textContent = 'Hide raw';
       } else {
         section.classList.add('hidden');
-        toggle.textContent = 'View';
+        toggle.textContent = 'View raw';
       }
     }
 
@@ -275,6 +317,16 @@ function getSuccessPage(
         copyText.textContent = 'Copied!';
         setTimeout(() => {
           copyText.textContent = 'Copy to clipboard';
+        }, 2000);
+      });
+    }
+
+    function copyToClipboard(text, btn) {
+      navigator.clipboard.writeText(text).then(() => {
+        const originalText = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => {
+          btn.textContent = originalText;
         }, 2000);
       });
     }
@@ -322,7 +374,7 @@ export function createSetupServer(port: number): Server {
 
 				logger.info({ appId: app.id }, "GitHub App created successfully");
 
-				// Write credentials to .env
+				// Try to write credentials - if it fails, user can copy from UI
 				const envWriteSuccess = await writeCredentialsToEnv(app);
 
 				// Show success page
