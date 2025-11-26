@@ -74,7 +74,7 @@ Use `compose.dokploy.yml` for [Dokploy](https://dokploy.com) deployments.
 | `LLM_MODEL_NAME` | AI model to use | No (default: `gemini-flash-latest`) |
 | `LOG_LEVEL` | Logging verbosity | No (default: `info`) |
 
-GitHub App credentials (`APP_ID`, `PRIVATE_KEY`, `WEBHOOK_SECRET`) are automatically configured via the one-click setup and stored in Redis.
+GitHub App credentials (`APP_ID`, `PRIVATE_KEY`, `WEBHOOK_SECRET`) are automatically configured via the one-click setup and saved to your `.env` file.
 
 ## Architecture
 
