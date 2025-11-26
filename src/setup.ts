@@ -57,6 +57,17 @@ function generateBase64Key(pem: string): string {
 }
 
 /**
+ * Generate simplified credential block for easy copy-paste.
+ * Uses base64-encoded private key for single-line compatibility.
+ */
+function generateCredentialBlock(app: ManifestResponse): string {
+	const base64Key = generateBase64Key(app.pem);
+	return `GITHUB_APP_ID=${app.id}
+GITHUB_WEBHOOK_SECRET=${app.webhook_secret}
+GITHUB_APP_PRIVATE_KEY=${base64Key}`;
+}
+
+/**
  * Write credentials to .env file (append).
  * Returns true on success, false on failure.
  */
@@ -151,27 +162,17 @@ export function getSetupPage(manifest: string): string {
 
 /**
  * Generate the success page after credentials are saved to .env.
- * Shows confirmation, View toggle for credentials, base64 key for Docker, and install button.
+ * Shows a single credential block for easy copy-paste and install button.
  */
 export function getSuccessPage(
 	app: ManifestResponse,
 	envWriteSuccess: boolean,
 ): string {
-	const envContent = generateEnvContent(app).trim();
-	const base64Key = generateBase64Key(app.pem);
-
-	// Escape for HTML textarea
-	const escapedEnvContent = envContent
-		.replace(/&/g, "&amp;")
-		.replace(/</g, "&lt;")
-		.replace(/>/g, "&gt;");
-
-	// For JS string (escape backticks and backslashes)
-	const jsEnvContent = envContent.replace(/\\/g, "\\\\").replace(/`/g, "\\`");
+	const credentialBlock = generateCredentialBlock(app);
 
 	const statusMessage = envWriteSuccess
-		? `<span class="text-green-700">Credentials saved to .env</span>`
-		: `<span class="text-blue-700">Copy credentials below to your environment</span>`;
+		? `Credentials also saved to .env`
+		: `Copy these to your environment variables`;
 
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -184,7 +185,7 @@ export function getSuccessPage(
 <body class="bg-gray-50 min-h-screen">
   <div class="max-w-2xl mx-auto px-6 py-16">
     <!-- Success header -->
-    <div class="flex items-center gap-3 mb-3">
+    <div class="flex items-center gap-3 mb-6">
       <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
         <svg class="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
@@ -193,60 +194,19 @@ export function getSuccessPage(
       <h1 class="text-2xl font-bold text-gray-900">GitHub App Created!</h1>
     </div>
 
-    <!-- Docker/Dokploy: Base64 credentials (recommended) -->
-    <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-      <div class="flex items-center gap-2 mb-3">
-        <svg class="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2"></path>
-        </svg>
-        <span class="font-semibold text-blue-900">For Docker / Dokploy</span>
-      </div>
-      <p class="text-sm text-blue-800 mb-3">Copy these values to your environment variables:</p>
-      <div class="space-y-2 font-mono text-xs">
-        <div class="flex items-center gap-2">
-          <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_APP_ID</code>
-          <code class="bg-white border border-blue-200 px-2 py-1 rounded flex-1 truncate">${app.id}</code>
-          <button onclick="copyToClipboard('${app.id}', this)" class="text-blue-600 hover:text-blue-800 text-xs">Copy</button>
-        </div>
-        <div class="flex items-center gap-2">
-          <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_WEBHOOK_SECRET</code>
-          <code class="bg-white border border-blue-200 px-2 py-1 rounded flex-1 truncate">${app.webhook_secret}</code>
-          <button onclick="copyToClipboard('${app.webhook_secret}', this)" class="text-blue-600 hover:text-blue-800 text-xs">Copy</button>
-        </div>
-        <div>
-          <div class="flex items-center gap-2 mb-1">
-            <code class="bg-blue-100 px-2 py-1 rounded">GITHUB_APP_PRIVATE_KEY</code>
-            <span class="text-blue-600 text-xs">(base64 encoded)</span>
-            <button onclick="copyToClipboard(base64Key, this)" class="text-blue-600 hover:text-blue-800 text-xs ml-auto">Copy</button>
-          </div>
-          <textarea readonly class="w-full bg-white border border-blue-200 rounded p-2 h-16 resize-none text-xs">${base64Key}</textarea>
-        </div>
-      </div>
-    </div>
-
-    <!-- Credentials status with View toggle -->
+    <!-- Credentials block -->
     <div class="bg-white border border-gray-200 rounded-lg p-4 mb-6">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-2">
-          <svg class="w-5 h-5 ${envWriteSuccess ? "text-green-600" : "text-blue-600"}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="${envWriteSuccess ? "M5 13l4 4L19 7" : "M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"}"></path>
-          </svg>
-          ${statusMessage}
-        </div>
-        <button id="view-toggle" onclick="toggleCredentials()" class="text-sm text-blue-600 hover:text-blue-800 font-medium">View raw</button>
+      <div class="flex items-center justify-between mb-3">
+        <span class="font-medium text-gray-900">Environment Variables</span>
+        <span class="text-sm text-gray-500">${statusMessage}</span>
       </div>
-
-      <!-- Collapsible raw credentials textarea -->
-      <div id="credentials-section" class="hidden mt-4">
-        <p class="text-xs text-gray-500 mb-2">Raw .env format (for local development):</p>
-        <textarea readonly class="w-full font-mono text-xs p-3 bg-gray-50 border border-gray-200 rounded-lg h-40 resize-none">${escapedEnvContent}</textarea>
-        <button onclick="copyCredentials()" id="copy-btn" class="mt-2 text-sm text-gray-600 hover:text-gray-800 flex items-center gap-1">
-          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
-          </svg>
-          <span id="copy-text">Copy to clipboard</span>
-        </button>
-      </div>
+      <textarea id="credentials" readonly class="w-full font-mono text-xs p-3 bg-gray-50 border border-gray-200 rounded-lg h-24 resize-none">${credentialBlock}</textarea>
+      <button onclick="copyCredentials()" id="copy-btn" class="mt-3 w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"></path>
+        </svg>
+        <span id="copy-text">Copy to clipboard</span>
+      </button>
     </div>
 
     <!-- Next steps -->
@@ -280,39 +240,14 @@ export function getSuccessPage(
   </div>
 
   <script>
-    const envContent = \`${jsEnvContent}\`;
-    const base64Key = \`${base64Key}\`;
-
-    function toggleCredentials() {
-      const section = document.getElementById('credentials-section');
-      const toggle = document.getElementById('view-toggle');
-      const isHidden = section.classList.contains('hidden');
-
-      if (isHidden) {
-        section.classList.remove('hidden');
-        toggle.textContent = 'Hide raw';
-      } else {
-        section.classList.add('hidden');
-        toggle.textContent = 'View raw';
-      }
-    }
+    const credentials = \`${credentialBlock}\`;
 
     function copyCredentials() {
-      navigator.clipboard.writeText(envContent).then(() => {
+      navigator.clipboard.writeText(credentials).then(() => {
         const copyText = document.getElementById('copy-text');
         copyText.textContent = 'Copied!';
         setTimeout(() => {
           copyText.textContent = 'Copy to clipboard';
-        }, 2000);
-      });
-    }
-
-    function copyToClipboard(text, btn) {
-      navigator.clipboard.writeText(text).then(() => {
-        const originalText = btn.textContent;
-        btn.textContent = 'Copied!';
-        setTimeout(() => {
-          btn.textContent = originalText;
         }, 2000);
       });
     }
