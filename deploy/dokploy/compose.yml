@@ -45,7 +45,7 @@ services:
     restart: always
     command: redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
-      - ../files/elapse-redis:/data
+      - ../../../files/elapse-redis:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
