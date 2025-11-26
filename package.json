@@ -6,6 +6,9 @@
 		"start": "bun src/index.ts",
 		"dev": "bun --watch src/index.ts",
 		"test": "bun test",
+		"test:unit": "bun test tests/core/",
+		"e2e:collect": "bun tests/scripts/collect-fixtures.ts",
+		"e2e:test": "bun test tests/e2e/ --timeout 120000",
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
 		"format": "biome format ."

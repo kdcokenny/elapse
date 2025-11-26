@@ -1,0 +1,14 @@
+{
+	"repo": "excalidraw/excalidraw",
+	"fetchedAt": "2025-11-26T15:12:12.394Z",
+	"dateRange": {
+		"start": "2025-11-20",
+		"end": "2025-11-26"
+	},
+	"stats": {
+		"totalCommits": 4,
+		"includedCommits": 4,
+		"excludedCommits": 0
+	},
+	"schemaVersion": 1
+}

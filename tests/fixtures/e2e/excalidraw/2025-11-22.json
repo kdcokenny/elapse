@@ -1,0 +1,27 @@
+{
+	"date": "2025-11-22",
+	"commits": [
+		{
+			"sha": "b660478164a9137f6c48893f38671eedab22b83e",
+			"message": "fix: prevent translation of excalidraw container (#10389)",
+			"user": "dwelle",
+			"timestamp": "2025-11-22T15:16:30Z",
+			"author": {
+				"name": "David Luzar",
+				"email": "5153846+dwelle@users.noreply.github.com",
+				"username": "dwelle"
+			},
+			"files": {
+				"added": [],
+				"modified": ["packages/excalidraw/components/App.tsx"],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/excalidraw/components/App.tsx b/packages/excalidraw/components/App.tsx\nindex ef6a6fb5edcc..a0252bf7fb51 100644\n--- a/packages/excalidraw/components/App.tsx\n+++ b/packages/excalidraw/components/App.tsx\n@@ -1575,7 +1575,8 @@ class App extends React.Component<AppProps, AppState> {\n \n     return (\n       <div\n-        className={clsx(\"excalidraw excalidraw-container\", {\n+        translate=\"no\"\n+        className={clsx(\"excalidraw excalidraw-container notranslate\", {\n           \"excalidraw--view-mode\":\n             this.state.viewModeEnabled ||\n             this.state.openDialog?.name === \"elementLinkSelector\",\n",
+			"diffSize": 636,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			}
+		}
+	]
+}

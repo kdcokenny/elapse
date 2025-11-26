@@ -28,3 +28,6 @@ coverage/
 
 # Private key files
 *.pem
+
+# Redis
+dump.rdb

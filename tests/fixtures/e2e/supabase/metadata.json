@@ -1,0 +1,14 @@
+{
+	"repo": "supabase/supabase",
+	"fetchedAt": "2025-11-26T15:13:30.568Z",
+	"dateRange": {
+		"start": "2025-11-20",
+		"end": "2025-11-26"
+	},
+	"stats": {
+		"totalCommits": 100,
+		"includedCommits": 98,
+		"excludedCommits": 2
+	},
+	"schemaVersion": 1
+}

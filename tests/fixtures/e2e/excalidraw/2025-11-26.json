@@ -1,0 +1,34 @@
+{
+	"date": "2025-11-26",
+	"commits": [
+		{
+			"sha": "019ce4c52cc82fe654d7e92c2672843c8ff57c96",
+			"message": "fix: Corner jumping & hints (#10403)\n\n* fix: Corner jumping\n\nSigned-off-by: Mark Tolmacs <mark@lazycat.hu>\n\n* fix: Hints\n\nSigned-off-by: Mark Tolmacs <mark@lazycat.hu>\n\n* fix: No corner avoidance for simple arrows\n\nSigned-off-by: Mark Tolmacs <mark@lazycat.hu>\n\n* show alt/cmd hint when creating/moving arrow point any time\n\n---------\n\nSigned-off-by: Mark Tolmacs <mark@lazycat.hu>\nCo-authored-by: dwelle <5153846+dwelle@users.noreply.github.com>",
+			"user": "mtolmacs",
+			"timestamp": "2025-11-26T11:00:33Z",
+			"author": {
+				"name": "Márk Tolmács",
+				"email": "mark@lazycat.hu",
+				"username": "mtolmacs"
+			},
+			"files": {
+				"added": [],
+				"modified": [
+					"packages/element/src/binding.ts",
+					"packages/excalidraw/components/HintViewer.tsx",
+					"packages/excalidraw/components/LayerUI.tsx",
+					"packages/excalidraw/locales/en.json",
+					"packages/excalidraw/tests/__snapshots__/move.test.tsx.snap",
+					"packages/excalidraw/types.ts"
+				],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/element/src/binding.ts b/packages/element/src/binding.ts\nindex 473b2ec7bed7..c3fcf2767b00 100644\n--- a/packages/element/src/binding.ts\n+++ b/packages/element/src/binding.ts\n@@ -1202,23 +1202,26 @@ export const bindPointToSnapToElementOutline = (\n   customIntersector?: LineSegment<GlobalPoint>,\n ): GlobalPoint => {\n   const elbowed = isElbowArrow(arrowElement);\n-  const point =\n-    customIntersector && !elbowed\n-      ? customIntersector[0]\n-      : LinearElementEditor.getPointAtIndexGlobalCoordinates(\n-          arrowElement,\n-          startOrEnd === \"start\" ? 0 : -1,\n-          elementsMap,\n-        );\n+  const point = LinearElementEditor.getPointAtIndexGlobalCoordinates(\n+    arrowElement,\n+    startOrEnd === \"start\" ? 0 : -1,\n+    elementsMap,\n+  );\n \n   if (arrowElement.points.length < 2) {\n     // New arrow creation, so no snapping\n     return point;\n   }\n \n-  const edgePoint = isRectanguloidElement(bindableElement)\n-    ? avoidRectangularCorner(arrowElement, bindableElement, elementsMap, point)\n-    : point;\n+  const edgePoint =\n+    isRectanguloidElement(bindableElement) && elbowed\n+      ? avoidRectangularCorner(\n+          arrowElement,\n+          bindableElement,\n+          elementsMap,\n+          point,\n+        )\n+      : point;\n   const adjacentPoint =\n     customIntersector && !elbowed\n       ? customIntersector[1]\ndiff --git a/packages/excalidraw/components/HintViewer.tsx b/packages/excalidraw/components/HintViewer.tsx\nindex 1fd255c8fee7..875ad4b73d17 100644\n--- a/packages/excalidraw/components/HintViewer.tsx\n+++ b/packages/excalidraw/components/HintViewer.tsx\n@@ -62,6 +62,20 @@ const getHints = ({\n       shortcut: getTaggedShortcutKey(\"Alt\"),\n     });\n   }\n+\n+  const selectedElements = app.scene.getSelectedElements(appState);\n+\n+  // creating or dragging arrow point\n+  if (\n+    appState.selectedLinearElement?.isDragging &&\n+    selectedElements[0]?.type === \"arrow\"\n+  ) {\n+    return t(\"hints.arrowBindModifiers\", {\n+      shortcut_1: getTaggedShortcutKey(\"Ctrl\"),\n+      shortcut_2: getTaggedShortcutKey(\"Alt\"),\n+    });\n+  }\n+\n   if (activeTool.type === \"arrow\" || activeTool.type === \"line\") {\n     if (multiMode) {\n       return t(\"hints.linearElementMulti\", {\n@@ -89,8 +103,6 @@ const getHints = ({\n     return t(\"hints.embeddable\");\n   }\n \n-  const selectedElements = app.scene.getSelectedElements(appState);\n-\n   if (\n     isResizing &&\n     lastPointerDownWith === \"mouse\" &&\ndiff --git a/packages/excalidraw/components/LayerUI.tsx b/packages/excalidraw/components/LayerUI.tsx\nindex 457069e7d569..17dffdfd9d39 100644\n--- a/packages/excalidraw/components/LayerUI.tsx\n+++ b/packages/excalidraw/components/LayerUI.tsx\n@@ -646,14 +646,8 @@ const LayerUI = ({\n };\n \n const stripIrrelevantAppStateProps = (appState: AppState): UIAppState => {\n-  const {\n-    suggestedBinding,\n-    startBoundElement,\n-    cursorButton,\n-    scrollX,\n-    scrollY,\n-    ...ret\n-  } = appState;\n+  const { startBoundElement, cursorButton, scrollX, scrollY, ...ret } =\n+    appState;\n   return ret;\n };\n \ndiff --git a/packages/excalidraw/locales/en.json b/packages/excalidraw/locales/en.json\nindex d6fd2654bf32..233dcfa7a6e4 100644\n--- a/packages/excalidraw/locales/en.json\n+++ b/packages/excalidraw/locales/en.json\n@@ -341,7 +341,7 @@\n     \"canvasPanning\": \"To move canvas, hold {{shortcut_1}} or {{shortcut_2}} while dragging, or use the hand tool\",\n     \"linearElement\": \"Click to start multiple points, drag for single line\",\n     \"arrowTool\": \"Click to start multiple points, drag for single line. Press {{shortcut}} again to change arrow type.\",\n-    \"arrowBindModifiers\": \"Hold {{shortcut_1}} to bind inside, or {{shortcut_2}} to disable binding\",\n+    \"arrowBindModifiers\": \"Hold {{shortcut_1}} to disable binding, or {{shortcut_2}} to bind at a fixed point\",\n     \"freeDraw\": \"Click and drag, release when you're finished\",\n     \"text\": \"Tip: you can also add text by double-clicking anywhere with the selection tool\",\n     \"embeddable\": \"Click-drag to create a website embed\",\ndiff --git a/packages/excalidraw/tests/__snapshots__/move.test.tsx.snap b/packages/excalidraw/tests/__snapshots__/move.test.tsx.snap\nindex 8be177988e45..fceb5f14a7cb 100644\n--- a/packages/excalidraw/tests/__snapshots__/move.test.tsx.snap\n+++ b/packages/excalidraw/tests/__snapshots__/move.test.tsx.snap\n@@ -203,7 +203,7 @@ exports[`move element > rectangles with binding arrow 7`] = `\n       0,\n     ],\n     [\n-      79,\n+      \"79.00000\",\n       \"124.16785\",\n     ],\n   ],\n@@ -228,7 +228,7 @@ exports[`move element > rectangles with binding arrow 7`] = `\n   \"updated\": 1,\n   \"version\": 12,\n   \"versionNonce\": 2066753033,\n-  \"width\": 79,\n+  \"width\": \"79.00000\",\n   \"x\": 111,\n   \"y\": \"6.14995\",\n }\ndiff --git a/packages/excalidraw/types.ts b/packages/excalidraw/types.ts\nindex 66110700cb65..ad7c46a6db9a 100644\n--- a/packages/excalidraw/types.ts\n+++ b/packages/excalidraw/types.ts\n@@ -474,11 +474,7 @@ export type SearchMatch = {\n \n export type UIAppState = Omit<\n   AppState,\n-  | \"suggestedBinding\"\n-  | \"startBoundElement\"\n-  | \"cursorButton\"\n-  | \"scrollX\"\n-  | \"scrollY\"\n+  \"startBoundElement\" | \"cursorButton\" | \"scrollX\" | \"scrollY\"\n >;\n \n export type NormalizedZoomValue = number & { _brand: \"normalizedZoom\" };\n",
+			"diffSize": 5263,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			}
+		}
+	]
+}
