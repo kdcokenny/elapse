@@ -3,8 +3,9 @@
  * Entry point that wires everything together.
  */
 
+import { createServer, type Server as HttpServer } from "node:http";
 import { Queue } from "bullmq";
-import { Probot, Server } from "probot";
+import { createNodeMiddleware, createProbot } from "probot";
 import { logger } from "./logger";
 import { redis } from "./redis";
 import { createReportWorker, setupReportScheduler } from "./reporter";
@@ -93,45 +94,62 @@ async function startNormalMode(credentials: Credentials, port: number) {
 		logger.info("Queue closed");
 	});
 
-	// Create Probot server
-	const server = new Server({
-		Probot: Probot.defaults({
+	// Create Probot instance
+	const probot = createProbot({
+		overrides: {
 			appId: credentials.appId,
 			privateKey: credentials.privateKey,
 			secret: credentials.webhookSecret,
-		}),
-		port,
+		},
 	});
 
-	// Load webhook app
-	await server.load(createWebhookApp(queue));
+	// Create webhook middleware
+	const webhookMiddleware = await createNodeMiddleware(
+		createWebhookApp(queue),
+		{
+			probot,
+			webhooksPath: "/api/github/webhooks",
+		},
+	);
 
-	// Add health endpoint
-	// @ts-expect-error - accessing internal express app
-	const expressApp = server.expressApp || server.probotApp?.express;
-	if (expressApp) {
-		expressApp.get(
-			"/health",
-			(
-				_req: unknown,
-				res: { status: (code: number) => { json: (data: unknown) => void } },
-			) => {
-				const redisOk = redis.status === "ready";
-				const status = redisOk ? "healthy" : "unhealthy";
-				const statusCode = status === "healthy" ? 200 : 503;
-				res.status(statusCode).json({
+	// Create HTTP server with custom routes
+	const server: HttpServer = createServer(async (req, res) => {
+		const url = new URL(req.url || "/", `http://localhost:${port}`);
+
+		// Health endpoint
+		if (url.pathname === "/health" && req.method === "GET") {
+			const redisOk = redis.status === "ready";
+			const status = redisOk ? "healthy" : "unhealthy";
+			const statusCode = status === "healthy" ? 200 : 503;
+			res.writeHead(statusCode, { "Content-Type": "application/json" });
+			res.end(
+				JSON.stringify({
 					status,
 					redis: redisOk ? "up" : "down",
 					timestamp: new Date().toISOString(),
-				});
-			},
-		);
-	}
+				}),
+			);
+			return;
+		}
+
+		// Probot webhook handler
+		if (
+			url.pathname === "/api/github/webhooks" &&
+			(req.method === "POST" || req.method === "GET")
+		) {
+			await webhookMiddleware(req, res);
+			return;
+		}
+
+		// 404 for all other routes
+		res.writeHead(404, { "Content-Type": "application/json" });
+		res.end(JSON.stringify({ error: "Not Found" }));
+	});
 
 	// Register server shutdown
 	registerShutdownHandler(async () => {
 		logger.info("Stopping HTTP server...");
-		await server.stop();
+		await new Promise<void>((resolve) => server.close(() => resolve()));
 		logger.info("HTTP server stopped");
 	});
 
@@ -166,11 +184,11 @@ async function startNormalMode(credentials: Credentials, port: number) {
 	});
 
 	// Start the server
-	await server.start();
-
-	logger.info({ port }, "Elapse is running");
-	logger.info(`Webhook URL: http://localhost:${port}/api/github/webhooks`);
-	logger.info(`Health check: http://localhost:${port}/health`);
+	server.listen(port, () => {
+		logger.info({ port }, "Elapse is running");
+		logger.info(`Webhook URL: http://localhost:${port}/api/github/webhooks`);
+		logger.info(`Health check: http://localhost:${port}/health`);
+	});
 }
 
 async function main() {
