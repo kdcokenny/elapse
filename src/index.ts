@@ -3,14 +3,13 @@
  * Entry point that wires everything together.
  */
 
-import { createServer, type Server as HttpServer } from "node:http";
 import { Queue } from "bullmq";
-import { createNodeMiddleware, createProbot } from "probot";
+import { createProbot } from "probot";
 import { type Credentials, getCredentials } from "./credentials";
 import { logger } from "./logger";
 import { redis } from "./redis";
 import { createReportWorker, setupReportScheduler } from "./reporter";
-import { createSetupServer } from "./setup";
+import { createNormalServer, createSetupServer } from "./routes";
 import { initShutdownHandlers, registerShutdownHandler } from "./shutdown";
 import { createWebhookApp } from "./webhook";
 import { createWorker, QUEUE_NAME } from "./worker";
@@ -26,7 +25,7 @@ function startSetupMode(port: number) {
 	// Register shutdown handler for the setup server
 	registerShutdownHandler(async () => {
 		logger.info("Stopping setup server...");
-		server.close();
+		await server.stop();
 		logger.info("Setup server stopped");
 	});
 
@@ -37,11 +36,9 @@ function startSetupMode(port: number) {
 		logger.info("Redis connection closed");
 	});
 
-	server.listen(port, "0.0.0.0", () => {
-		logger.info({ port }, "Elapse is in SETUP MODE");
-		logger.info(`Visit http://localhost:${port} to configure GitHub App`);
-		logger.info("After setup, copy credentials to env vars and redeploy");
-	});
+	logger.info({ port }, "Elapse is in SETUP MODE");
+	logger.info(`Visit http://localhost:${port} to configure GitHub App`);
+	logger.info("After setup, copy credentials to env vars and redeploy");
 }
 
 /**
@@ -84,53 +81,16 @@ async function startNormalMode(credentials: Credentials, port: number) {
 		},
 	});
 
-	// Create webhook middleware
-	const webhookMiddleware = await createNodeMiddleware(
-		createWebhookApp(queue),
-		{
-			probot,
-			webhooksPath: "/api/github/webhooks",
-		},
-	);
+	// Load the webhook app (registers event handlers)
+	await probot.load(createWebhookApp(queue));
 
-	// Create HTTP server with custom routes
-	const server: HttpServer = createServer(async (req, res) => {
-		const url = new URL(req.url || "/", `http://localhost:${port}`);
-
-		// Health endpoint
-		if (url.pathname === "/health" && req.method === "GET") {
-			const redisOk = redis.status === "ready";
-			const status = redisOk ? "healthy" : "unhealthy";
-			const statusCode = status === "healthy" ? 200 : 503;
-			res.writeHead(statusCode, { "Content-Type": "application/json" });
-			res.end(
-				JSON.stringify({
-					status,
-					redis: redisOk ? "up" : "down",
-					timestamp: new Date().toISOString(),
-				}),
-			);
-			return;
-		}
-
-		// Probot webhook handler
-		if (
-			url.pathname === "/api/github/webhooks" &&
-			(req.method === "POST" || req.method === "GET")
-		) {
-			await webhookMiddleware(req, res);
-			return;
-		}
-
-		// 404 for all other routes
-		res.writeHead(404, { "Content-Type": "application/json" });
-		res.end(JSON.stringify({ error: "Not Found" }));
-	});
+	// Create Bun HTTP server with routes
+	const server = createNormalServer(probot, port);
 
 	// Register server shutdown
 	registerShutdownHandler(async () => {
 		logger.info("Stopping HTTP server...");
-		await new Promise<void>((resolve) => server.close(() => resolve()));
+		await server.stop();
 		logger.info("HTTP server stopped");
 	});
 
@@ -164,12 +124,9 @@ async function startNormalMode(credentials: Credentials, port: number) {
 		logger.info("Redis connection closed");
 	});
 
-	// Start the server
-	server.listen(port, () => {
-		logger.info({ port }, "Elapse is running");
-		logger.info(`Webhook URL: http://localhost:${port}/api/github/webhooks`);
-		logger.info(`Health check: http://localhost:${port}/health`);
-	});
+	logger.info({ port }, "Elapse is running");
+	logger.info(`Webhook URL: http://localhost:${port}/api/github/webhooks`);
+	logger.info(`Health check: http://localhost:${port}/health`);
 }
 
 async function main() {

@@ -4,7 +4,6 @@
  */
 
 import { appendFile } from "node:fs/promises";
-import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { logger } from "./logger";
 
@@ -18,24 +17,9 @@ interface ManifestResponse {
 }
 
 /**
- * Extract base URL from request headers (handles proxies).
- */
-function getBaseUrl(
-	req: { headers: Record<string, string | string[] | undefined> },
-	port: number,
-): string {
-	const proto = req.headers["x-forwarded-proto"] || "http";
-	const host =
-		req.headers["x-forwarded-host"] || req.headers.host || `localhost:${port}`;
-	const protocol = Array.isArray(proto) ? proto[0] : proto;
-	const hostname = Array.isArray(host) ? host[0] : host;
-	return `${protocol}://${hostname}`;
-}
-
-/**
  * Generate GitHub App manifest with required permissions.
  */
-function generateManifest(baseUrl: string): string {
+export function generateManifest(baseUrl: string): string {
 	return JSON.stringify({
 		name: "Elapse",
 		url: baseUrl,
@@ -76,7 +60,9 @@ function generateBase64Key(pem: string): string {
  * Write credentials to .env file (append).
  * Returns true on success, false on failure.
  */
-async function writeCredentialsToEnv(app: ManifestResponse): Promise<boolean> {
+export async function writeCredentialsToEnv(
+	app: ManifestResponse,
+): Promise<boolean> {
 	try {
 		const envPath = join(process.cwd(), ".env");
 		const content = generateEnvContent(app);
@@ -93,7 +79,7 @@ async function writeCredentialsToEnv(app: ManifestResponse): Promise<boolean> {
  * Exchange the temporary code from GitHub for app credentials.
  * In dev mode, returns mock credentials for UI testing.
  */
-async function exchangeCode(code: string): Promise<ManifestResponse> {
+export async function exchangeCode(code: string): Promise<ManifestResponse> {
 	// Dev mode: return mock credentials for UI testing
 	if (process.env.NODE_ENV === "development") {
 		return {
@@ -122,7 +108,7 @@ async function exchangeCode(code: string): Promise<ManifestResponse> {
 /**
  * Generate the setup HTML page.
  */
-function getSetupPage(manifest: string): string {
+export function getSetupPage(manifest: string): string {
 	const createAppUrl = "https://github.com/settings/apps/new";
 	const escapedManifest = manifest.replace(/'/g, "&#39;");
 	const isDev = process.env.NODE_ENV === "development";
@@ -167,7 +153,7 @@ function getSetupPage(manifest: string): string {
  * Generate the success page after credentials are saved to .env.
  * Shows confirmation, View toggle for credentials, base64 key for Docker, and install button.
  */
-function getSuccessPage(
+export function getSuccessPage(
 	app: ManifestResponse,
 	envWriteSuccess: boolean,
 ): string {
@@ -333,65 +319,4 @@ function getSuccessPage(
   </script>
 </body>
 </html>`;
-}
-
-/**
- * Create the setup HTTP server.
- */
-export function createSetupServer(port: number): Server {
-	const server = createServer(async (req, res) => {
-		const url = new URL(req.url || "/", `http://localhost:${port}`);
-		const baseUrl = getBaseUrl(req, port);
-
-		// Health check
-		if (url.pathname === "/health") {
-			res.writeHead(200, { "Content-Type": "application/json" });
-			res.end(JSON.stringify({ status: "setup", mode: "setup" }));
-			return;
-		}
-
-		// Setup page with register button
-		if (url.pathname === "/" || url.pathname === "/probot") {
-			const manifest = generateManifest(baseUrl);
-			res.writeHead(200, { "Content-Type": "text/html" });
-			res.end(getSetupPage(manifest));
-			return;
-		}
-
-		// Callback from GitHub after app creation
-		if (url.pathname === "/setup/callback") {
-			const code = url.searchParams.get("code");
-
-			if (!code) {
-				res.writeHead(400, { "Content-Type": "text/plain" });
-				res.end("Missing code parameter");
-				return;
-			}
-
-			try {
-				logger.info("Exchanging code for GitHub App credentials...");
-				const app = await exchangeCode(code);
-
-				logger.info({ appId: app.id }, "GitHub App created successfully");
-
-				// Try to write credentials - if it fails, user can copy from UI
-				const envWriteSuccess = await writeCredentialsToEnv(app);
-
-				// Show success page
-				res.writeHead(200, { "Content-Type": "text/html" });
-				res.end(getSuccessPage(app, envWriteSuccess));
-			} catch (err) {
-				logger.error({ err }, "Failed to exchange code for credentials");
-				res.writeHead(500, { "Content-Type": "text/plain" });
-				res.end("Failed to create GitHub App. Please try again.");
-			}
-			return;
-		}
-
-		// 404 for everything else
-		res.writeHead(404, { "Content-Type": "text/plain" });
-		res.end("Not found");
-	});
-
-	return server;
 }
