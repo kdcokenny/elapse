@@ -4,18 +4,24 @@
  */
 
 import { type Job, type Queue, Worker } from "bullmq";
-import { narrateDay } from "./ai";
+import { narrateFeature } from "./ai";
+import { generateBlockersSummary } from "./core/blockers";
 import {
-	formatDailyReport,
+	type ActivityStats,
+	type BranchSummary,
+	type FeatureSummary,
+	formatFeatureCentricReport,
 	getTodayDate,
-	type UserSummary,
 } from "./core/formatting";
 import { DiscordWebhookError } from "./errors";
 import { reportLogger } from "./logger";
-import { getAllTranslationsForDate, redis } from "./redis";
+import { getAllForDate, redis, type StoredTranslation } from "./redis";
 
 const QUEUE_NAME = "elapse";
 const DISCORD_TIMEOUT_MS = 10000;
+
+// Enable in-progress section via env
+const SHOW_IN_PROGRESS = process.env.SHOW_IN_PROGRESS !== "false";
 
 interface ReportJob {
 	type: "daily";
@@ -63,61 +69,212 @@ async function sendToDiscord(content: string): Promise<void> {
 }
 
 /**
- * Generate the daily report content.
+ * Group translations by PR number for feature-centric reporting.
+ */
+interface PRGroup {
+	prNumber: number;
+	prTitle: string;
+	translations: StoredTranslation[];
+	authors: Set<string>;
+}
+
+/**
+ * Generate shipped section with feature-centric format.
+ * Groups by PR (one PR = one feature), skips commits without PRs.
+ */
+async function generateFeatureShippedSection(
+	shipped: Map<string, StoredTranslation[]>,
+	_date: string,
+): Promise<FeatureSummary[]> {
+	// Group all translations by PR number
+	const byPR = new Map<number, PRGroup>();
+
+	for (const [user, translations] of shipped) {
+		for (const t of translations) {
+			// Skip non-PR commits and empty summaries
+			if (!t.summary || !t.prNumber) {
+				continue;
+			}
+
+			let prData = byPR.get(t.prNumber);
+			if (!prData) {
+				prData = {
+					prNumber: t.prNumber,
+					prTitle: t.prTitle || `PR #${t.prNumber}`,
+					translations: [],
+					authors: new Set(),
+				};
+				byPR.set(t.prNumber, prData);
+			}
+
+			prData.translations.push(t);
+			prData.authors.add(user);
+
+			// Update title if we have a better one
+			if (t.prTitle && prData.prTitle === `PR #${t.prNumber}`) {
+				prData.prTitle = t.prTitle;
+			}
+		}
+	}
+
+	// Generate feature summaries for each PR
+	const summaries: FeatureSummary[] = [];
+
+	for (const [prNumber, prData] of byPR) {
+		const texts = prData.translations.map((t) => t.summary);
+
+		// Use AI to generate feature name and impact
+		const { featureName, impact } = await narrateFeature(
+			prData.prTitle,
+			prNumber,
+			texts,
+		);
+
+		summaries.push({
+			featureName,
+			impact,
+			prNumber,
+			authors: Array.from(prData.authors),
+			commitCount: prData.translations.length,
+		});
+	}
+
+	return summaries;
+}
+
+/**
+ * Generate progress section with brief bullets by branch.
+ * No AI - just structured data.
+ */
+function generateProgressSection(
+	progress: Map<string, StoredTranslation[]>,
+): BranchSummary[] {
+	// Group by branch across all users, capturing PR metadata
+	const byBranch = new Map<
+		string,
+		{
+			users: Set<string>;
+			count: number;
+			prTitle?: string;
+			prNumber?: number;
+		}
+	>();
+
+	for (const [user, translations] of progress) {
+		for (const t of translations) {
+			if (!t.summary) continue;
+
+			if (!byBranch.has(t.branch)) {
+				byBranch.set(t.branch, {
+					users: new Set(),
+					count: 0,
+					prTitle: t.prTitle,
+					prNumber: t.prNumber,
+				});
+			}
+			const branchData = byBranch.get(t.branch);
+			if (branchData) {
+				branchData.users.add(user);
+				branchData.count++;
+				// Update PR metadata if not already set (first translation wins)
+				if (!branchData.prTitle && t.prTitle) {
+					branchData.prTitle = t.prTitle;
+				}
+				if (!branchData.prNumber && t.prNumber) {
+					branchData.prNumber = t.prNumber;
+				}
+			}
+		}
+	}
+
+	// Return brief bullets with PR context (NO AI narration for progress)
+	return Array.from(byBranch.entries()).map(([branch, data]) => ({
+		branch,
+		users: Array.from(data.users),
+		commitCount: data.count,
+		prTitle: data.prTitle,
+		prNumber: data.prNumber,
+	}));
+}
+
+/**
+ * Generate the daily report content with sections.
  */
 async function generateReport(date: string): Promise<string | null> {
 	const log = reportLogger.child({ date });
 
 	log.info("Generating daily report");
 
-	// Get all translations for the date
-	const translationsByUser = await getAllTranslationsForDate(date);
+	// Get all data for the date
+	const data = await getAllForDate(date);
 
-	if (translationsByUser.size === 0) {
-		log.info("No translations found for date");
+	const hasShipped = data.shipped.size > 0;
+	const hasProgress = data.progress.size > 0;
+	const hasBlockers = data.blockers.length > 0;
+
+	if (!hasShipped && !hasProgress && !hasBlockers) {
+		log.info("No activity to report for date");
 		return null;
 	}
 
-	log.debug({ userCount: translationsByUser.size }, "Found translations");
+	log.debug(
+		{
+			shippedUsers: data.shipped.size,
+			progressUsers: data.progress.size,
+			blockers: data.blockers.length,
+		},
+		"Found data for report",
+	);
 
-	// Generate narrative for each user
-	const userSummaries: UserSummary[] = [];
+	// Generate blockers section
+	const blockersSummary = generateBlockersSummary(data.blockers);
 
-	for (const [user, translations] of translationsByUser) {
-		// Filter out SKIPs
-		const meaningful = translations.filter((t) => t !== "SKIP");
+	// Generate shipped section with feature-centric format (one PR = one feature)
+	const featureSummaries = await generateFeatureShippedSection(
+		data.shipped,
+		date,
+	);
 
-		if (meaningful.length === 0) {
-			log.debug({ user }, "No meaningful translations for user");
-			continue;
-		}
+	// Generate progress section (no AI)
+	const progressSummaries = SHOW_IN_PROGRESS
+		? generateProgressSection(data.progress)
+		: [];
 
-		const narrative = await narrateDay(meaningful, date);
+	// Calculate stats - prsMerged is now based on feature summaries
+	const stats: ActivityStats = {
+		prsMerged: featureSummaries.length,
+		branchesActive: progressSummaries.length,
+		totalCommits:
+			featureSummaries.reduce((sum, f) => sum + f.commitCount, 0) +
+			progressSummaries.reduce((sum, p) => sum + p.commitCount, 0),
+		blockerCount: blockersSummary.length,
+	};
 
-		userSummaries.push({
-			user,
-			narrative,
-			commitCount: meaningful.length,
-		});
-
-		log.debug(
-			{ user, commitCount: meaningful.length },
-			"Generated user summary",
-		);
-	}
-
-	if (userSummaries.length === 0) {
-		log.info("No meaningful summaries to report");
+	// Check if we have anything meaningful to report
+	if (
+		featureSummaries.length === 0 &&
+		progressSummaries.length === 0 &&
+		blockersSummary.length === 0
+	) {
+		log.info("No meaningful content to report");
 		return null;
 	}
 
-	// Format the report
-	const report = formatDailyReport(date, userSummaries);
+	// Format the report with feature-centric format
+	const report = formatFeatureCentricReport(
+		date,
+		blockersSummary,
+		featureSummaries,
+		progressSummaries,
+		stats,
+	);
 
 	log.info(
 		{
-			userCount: userSummaries.length,
-			totalCommits: userSummaries.reduce((sum, s) => sum + s.commitCount, 0),
+			featuresShipped: featureSummaries.length,
+			progressCount: progressSummaries.length,
+			blockerCount: blockersSummary.length,
+			prsMerged: stats.prsMerged,
 		},
 		"Report generated",
 	);
@@ -221,5 +378,11 @@ export function createReportWorker(): Worker<ReportJob> {
 	return worker;
 }
 
-// Export for manual triggering
-export { generateReport, sendToDiscord };
+// Export for manual triggering and testing
+export {
+	generateReport,
+	sendToDiscord,
+	// Export helpers for E2E testing with production code paths
+	generateFeatureShippedSection,
+	generateProgressSection,
+};

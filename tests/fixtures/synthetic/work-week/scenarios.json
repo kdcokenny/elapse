@@ -1,0 +1,10 @@
+{
+	"scenarios": [
+		{
+			"id": "full-week",
+			"name": "Full Development Week",
+			"description": "Comprehensive week: Alice's auth feature (draft->merged), Bob's docs, Carol's payment feature with blockers, Dave's security fix with review blocker. Tests all blocker types and resolution flows.",
+			"path": "full-week"
+		}
+	]
+}

@@ -1,0 +1,55 @@
+{
+	"shipped": {
+		"alice": [
+			{
+				"summary": "Merged complete OAuth2 authentication v2 with login flow, token refresh, and error handling",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000007"
+			}
+		],
+		"carol": [
+			{
+				"summary": "Merged complete Stripe payment processing with webhooks and validation",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/payment-flow",
+				"prNumber": 201,
+				"prTitle": "feat: Add payment processing flow",
+				"sha": "def4560000000000000000000000000000000006"
+			}
+		]
+	},
+	"progress": {},
+	"blockers": [],
+	"featureNarrations": {
+		"101": {
+			"featureName": "User Authentication v2",
+			"impact": "Secure OAuth2 login with automatic token refresh and comprehensive error handling"
+		},
+		"201": {
+			"featureName": "Payment Processing Flow",
+			"impact": "Complete Stripe integration with webhooks and payment validation"
+		}
+	},
+	"mergedPRs": [101, 201],
+	"expectations": {
+		"totalCommits": 2,
+		"blockers": {
+			"count": 0,
+			"branches": [],
+			"types": []
+		},
+		"shipped": {
+			"featureCount": 2,
+			"featureNames": ["User Authentication v2", "Payment Processing Flow"]
+		},
+		"inProgress": {
+			"branchCount": 0,
+			"branches": []
+		}
+	}
+}

@@ -1,10 +1,23 @@
 /**
  * AI service using Vercel AI SDK with Google Gemini.
+ * Uses generateObject() with Zod schemas for type-safe structured output.
  */
 
 import { google } from "@ai-sdk/google";
-import { generateText } from "ai";
-import { buildNarratorPrompt, buildTranslatorPrompt } from "./core/prompts";
+import { generateObject } from "ai";
+import {
+	buildCommentAnalysisPrompt,
+	buildFeatureNarratorPrompt,
+	buildTranslatorPrompt,
+} from "./core/prompts";
+import {
+	type CommentAnalysisOutput,
+	CommentAnalysisSchema,
+	type FeatureSummaryOutput,
+	FeatureSummarySchema,
+	type Translation,
+	TranslationSchema,
+} from "./core/schemas";
 import { AIProviderError, AIProviderTimeoutError } from "./errors";
 import { aiLogger } from "./logger";
 
@@ -24,13 +37,13 @@ function getModel() {
 }
 
 /**
- * Translate a diff into a business-value sentence.
- * Returns "SKIP" for trivial changes.
+ * Translate a diff into a structured business-value summary.
+ * Returns action: "skip" for trivial changes.
  */
 export async function translateDiff(
 	message: string,
 	diff: string,
-): Promise<string> {
+): Promise<Translation> {
 	const log = aiLogger.child({ operation: "translate" });
 
 	try {
@@ -40,19 +53,25 @@ export async function translateDiff(
 		const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
 		try {
-			const { text, usage } = await generateText({
+			const { object, usage } = await generateObject({
 				model: getModel(),
+				schema: TranslationSchema,
 				system: prompt.system,
 				prompt: prompt.user,
+				temperature: 0.1,
 				abortSignal: controller.signal,
 			});
 
 			log.debug(
-				{ tokens: usage?.totalTokens, length: text.length },
+				{
+					tokens: usage?.totalTokens,
+					action: object.action,
+					category: object.category,
+				},
 				"Translation complete",
 			);
 
-			return text.trim();
+			return object;
 		} finally {
 			clearTimeout(timeout);
 		}
@@ -71,44 +90,48 @@ export async function translateDiff(
 }
 
 /**
- * Generate a narrative summary from a list of translations.
+ * Analyze a PR comment to determine if it indicates a blocker or resolves one.
+ * Uses AI to understand natural language blocker signals.
  */
-export async function narrateDay(
-	translations: string[],
-	date: string,
-): Promise<string> {
-	const log = aiLogger.child({ operation: "narrate" });
-
-	// Handle empty or single translation cases without AI
-	if (translations.length === 0) {
-		return "No significant updates today.";
-	}
-
-	const [firstTranslation] = translations;
-	if (translations.length === 1 && firstTranslation) {
-		return firstTranslation;
-	}
+export async function analyzeComment(
+	commentBody: string,
+	prContext: { title: string; number: number },
+): Promise<CommentAnalysisOutput> {
+	const log = aiLogger.child({
+		operation: "analyzeComment",
+		pr: prContext.number,
+	});
 
 	try {
-		const prompt = buildNarratorPrompt(translations, date, PROJECT_CONTEXT);
+		const prompt = buildCommentAnalysisPrompt(
+			prContext.title,
+			prContext.number,
+			commentBody,
+		);
 
 		const controller = new AbortController();
 		const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
 
 		try {
-			const { text, usage } = await generateText({
+			const { object, usage } = await generateObject({
 				model: getModel(),
+				schema: CommentAnalysisSchema,
 				system: prompt.system,
 				prompt: prompt.user,
+				temperature: 0.1,
 				abortSignal: controller.signal,
 			});
 
 			log.debug(
-				{ tokens: usage?.totalTokens, translationCount: translations.length },
-				"Narration complete",
+				{
+					tokens: usage?.totalTokens,
+					pr: prContext.number,
+					action: object.action,
+				},
+				"Comment analysis complete",
 			);
 
-			return text.trim();
+			return object;
 		} finally {
 			clearTimeout(timeout);
 		}
@@ -117,11 +140,130 @@ export async function narrateDay(
 			throw new AIProviderTimeoutError(AI_TIMEOUT_MS, error as Error);
 		}
 
-		log.error({ err: error }, "Narration failed");
-		throw new AIProviderError(
-			`AI narration failed: ${(error as Error).message}`,
-			undefined,
-			error as Error,
-		);
+		// For any generation errors, return none instead of throwing
+		log.warn({ err: error }, "Comment analysis failed, defaulting to none");
+		return { action: "none", description: null };
 	}
+}
+
+// =============================================================================
+// Feature Narration (PR → Feature Summary)
+// =============================================================================
+
+/**
+ * Generate a feature summary from a PR title and its commit translations.
+ * Returns a human-readable feature name and impact statement.
+ */
+export async function narrateFeature(
+	prTitle: string,
+	prNumber: number,
+	translations: string[],
+): Promise<FeatureSummaryOutput> {
+	const log = aiLogger.child({ operation: "narrateFeature", pr: prNumber });
+
+	// Handle single translation without AI - infer from it
+	if (translations.length === 1 && translations[0]) {
+		return inferFeatureFromSingle(prTitle, translations[0]);
+	}
+
+	// Handle empty case
+	if (translations.length === 0) {
+		return inferFeatureFromTitle(prTitle);
+	}
+
+	try {
+		const prompt = buildFeatureNarratorPrompt(
+			prTitle,
+			prNumber,
+			translations,
+			PROJECT_CONTEXT,
+		);
+
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+		try {
+			const { object, usage } = await generateObject({
+				model: getModel(),
+				schema: FeatureSummarySchema,
+				system: prompt.system,
+				prompt: prompt.user,
+				temperature: 0.1,
+				abortSignal: controller.signal,
+			});
+
+			log.debug(
+				{
+					tokens: usage?.totalTokens,
+					prNumber,
+					translationCount: translations.length,
+				},
+				"Feature narration complete",
+			);
+
+			return object;
+		} finally {
+			clearTimeout(timeout);
+		}
+	} catch (error) {
+		if ((error as Error).name === "AbortError") {
+			throw new AIProviderTimeoutError(AI_TIMEOUT_MS, error as Error);
+		}
+
+		// For generation errors, use fallback
+		log.warn({ err: error }, "Feature narration failed, using fallback");
+		return inferFeatureFromTitle(prTitle);
+	}
+}
+
+/**
+ * Infer a feature summary from a single translation.
+ */
+function inferFeatureFromSingle(
+	prTitle: string,
+	translation: string,
+): FeatureSummaryOutput {
+	// Use the translation as the impact, derive feature name from PR title
+	const featureName = cleanPRTitle(prTitle);
+	return {
+		featureName,
+		impact: translation,
+	};
+}
+
+/**
+ * Infer a feature summary from just the PR title.
+ */
+function inferFeatureFromTitle(prTitle: string): FeatureSummaryOutput {
+	const featureName = cleanPRTitle(prTitle);
+	return {
+		featureName,
+		impact: "Minor updates and improvements",
+	};
+}
+
+/**
+ * Clean a PR title to be a human-readable feature name.
+ * Removes conventional commit prefixes and cleans up formatting.
+ */
+function cleanPRTitle(title: string): string {
+	// Remove conventional commit prefixes
+	let cleaned = title
+		.replace(
+			/^(feat|fix|chore|refactor|docs|style|test|perf|ci|build|revert)(\(.+?\))?:\s*/i,
+			"",
+		)
+		.trim();
+
+	// Capitalize first letter
+	if (cleaned.length > 0) {
+		cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+	}
+
+	// Truncate if too long
+	if (cleaned.length > 60) {
+		cleaned = `${cleaned.slice(0, 57)}...`;
+	}
+
+	return cleaned || "Updates and improvements";
 }

@@ -1,0 +1,104 @@
+{
+	"shipped": {},
+	"progress": {
+		"alice": [
+			{
+				"summary": "Implemented OAuth2 login flow with secure token handling and provider configuration",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000001"
+			},
+			{
+				"summary": "Added automatic token refresh mechanism to maintain user sessions",
+				"category": "feature",
+				"significance": "medium",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000002"
+			}
+		],
+		"carol": [
+			{
+				"summary": "Started Stripe payment integration with initial SDK setup",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/payment-flow",
+				"prNumber": 201,
+				"prTitle": "feat: Add payment processing flow",
+				"sha": "def4560000000000000000000000000000000001"
+			}
+		],
+		"dave": [
+			{
+				"summary": "Patched rate limiter bypass vulnerability in token validation",
+				"category": "bugfix",
+				"significance": "critical",
+				"branch": "fix/rate-limiter",
+				"prNumber": 202,
+				"prTitle": "fix: Rate limiter bypass vulnerability",
+				"sha": "def4560000000000000000000000000000000002"
+			}
+		]
+	},
+	"blockers": [
+		{
+			"type": "label",
+			"description": "Labeled: blocked",
+			"prNumber": 201,
+			"prTitle": "feat: Add payment processing flow",
+			"branch": "feature/payment-flow",
+			"user": "carol"
+		},
+		{
+			"type": "description",
+			"description": "Waiting for API keys from finance team",
+			"prNumber": 201,
+			"prTitle": "feat: Add payment processing flow",
+			"branch": "feature/payment-flow",
+			"user": "carol"
+		},
+		{
+			"type": "pending_review",
+			"description": "Waiting on: carol, eve",
+			"reviewer": "carol",
+			"prNumber": 202,
+			"prTitle": "fix: Rate limiter bypass vulnerability",
+			"branch": "fix/rate-limiter",
+			"user": "dave"
+		},
+		{
+			"type": "comment",
+			"description": "Need security review before merging",
+			"commentId": 101,
+			"prNumber": 202,
+			"prTitle": "fix: Rate limiter bypass vulnerability",
+			"branch": "fix/rate-limiter",
+			"user": "dave"
+		}
+	],
+	"mergedPRs": [],
+	"expectations": {
+		"totalCommits": 4,
+		"blockers": {
+			"count": 4,
+			"branches": ["feature/payment-flow", "fix/rate-limiter"],
+			"types": ["label", "description", "comment", "pending_review"]
+		},
+		"shipped": {
+			"featureCount": 0,
+			"featureNames": []
+		},
+		"inProgress": {
+			"branchCount": 3,
+			"branches": [
+				"feature/auth-v2",
+				"feature/payment-flow",
+				"fix/rate-limiter"
+			]
+		}
+	}
+}

@@ -26,6 +26,8 @@ import type {
 	DailyFixture,
 	FilterResult,
 	FixtureCommit,
+	FixturePR,
+	FixturePRReview,
 	RepoMetadata,
 } from "../fixtures/types";
 
@@ -47,6 +49,7 @@ interface ParsedArgs {
 	from?: string;
 	to?: string;
 	help?: boolean;
+	includePrs?: boolean;
 }
 
 function parseCliArgs(): ParsedArgs {
@@ -57,10 +60,14 @@ function parseCliArgs(): ParsedArgs {
 			from: { type: "string", short: "f" },
 			to: { type: "string", short: "t" },
 			help: { type: "boolean", short: "h" },
+			"include-prs": { type: "boolean", short: "p" },
 		},
 		allowPositionals: false,
 	});
-	return values as ParsedArgs;
+	return {
+		...values,
+		includePrs: values["include-prs"],
+	} as ParsedArgs;
 }
 
 function printHelp(): void {
@@ -74,6 +81,7 @@ Options:
   -r, --repo <owner/repo>   Collect for specific repo only
   -f, --from <YYYY-MM-DD>   Start date (overrides config)
   -t, --to <YYYY-MM-DD>     End date (overrides config)
+  -p, --include-prs         Fetch PR data (comments, reviews, labels) for commits
   -h, --help                Show this help message
 
 Environment:
@@ -83,6 +91,7 @@ Examples:
   bun tests/scripts/collect-fixtures.ts
   bun tests/scripts/collect-fixtures.ts --repo excalidraw/excalidraw
   bun tests/scripts/collect-fixtures.ts --from 2025-02-01 --to 2025-02-07
+  bun tests/scripts/collect-fixtures.ts --include-prs
 `);
 }
 
@@ -130,6 +139,7 @@ async function collectRepoFixtures(
 	repo: string,
 	dateRange: { start: string; end: string },
 	config: CollectionConfig,
+	includePrs: boolean,
 ): Promise<void> {
 	const repoFullName = `${owner}/${repo}`;
 	const repoDir = join(FIXTURES_BASE, repo);
@@ -228,6 +238,77 @@ async function collectRepoFixtures(
 			console.log(`    Diff truncated (${diff.length} bytes)`);
 		}
 
+		// Optionally fetch associated PR data
+		let associatedPR: FixturePR | undefined;
+		if (includePrs) {
+			try {
+				// Get PRs associated with this commit
+				const { data: associatedPRs } =
+					await octokit.repos.listPullRequestsAssociatedWithCommit({
+						owner,
+						repo,
+						commit_sha: commit.sha,
+						per_page: 1,
+					});
+
+				if (associatedPRs.length > 0) {
+					const pr = associatedPRs[0];
+					if (pr) {
+						console.log(`    Found PR #${pr.number} for commit`);
+
+						// Fetch reviews and comments
+						const [reviewsRes, commentsRes] = await Promise.all([
+							octokit.pulls.listReviews({
+								owner,
+								repo,
+								pull_number: pr.number,
+								per_page: config.prCollection?.maxReviewsPerPR || 20,
+							}),
+							octokit.issues.listComments({
+								owner,
+								repo,
+								issue_number: pr.number,
+								per_page: config.prCollection?.maxCommentsPerPR || 50,
+							}),
+						]);
+
+						associatedPR = {
+							number: pr.number,
+							title: pr.title,
+							state: pr.state as "open" | "closed",
+							draft: pr.draft || false,
+							merged: pr.merged_at !== null,
+							branch: pr.head.ref,
+							baseBranch: pr.base.ref,
+							author: pr.user?.login || "unknown",
+							body: pr.body,
+							labels: pr.labels.map((l) =>
+								typeof l === "string" ? l : l.name || "",
+							),
+							requestedReviewers: (pr.requested_reviewers || [])
+								.filter((r) => r !== null && "login" in r)
+								.map((r) => (r as { login: string }).login),
+							reviews: reviewsRes.data.map((r) => ({
+								id: r.id,
+								state: r.state as FixturePRReview["state"],
+								author: r.user?.login || "unknown",
+								body: r.body || undefined,
+							})),
+							comments: commentsRes.data.map((c) => ({
+								id: c.id,
+								body: c.body || "",
+								author: c.user?.login || "unknown",
+								createdAt: c.created_at,
+							})),
+							htmlUrl: pr.html_url,
+						};
+					}
+				}
+			} catch {
+				console.log(`    Warning: Failed to fetch PR data for commit`);
+			}
+		}
+
 		// Build fixture commit
 		const fixtureCommit: FixtureCommit = {
 			sha: commit.sha,
@@ -240,6 +321,7 @@ async function collectRepoFixtures(
 			diffSize: diff.length,
 			diffTruncated,
 			filterResult,
+			...(associatedPR && { associatedPR }),
 		};
 
 		// Group by date
@@ -317,12 +399,24 @@ async function main(): Promise<void> {
 		repos = [{ owner, repo: repoName }];
 	}
 
+	const includePrs = args.includePrs || config.prCollection?.enabled || false;
+
 	console.log("E2E Fixture Collection");
 	console.log("======================");
+	if (includePrs) {
+		console.log("PR collection enabled");
+	}
 
 	for (const { owner, repo } of repos) {
 		try {
-			await collectRepoFixtures(octokit, owner, repo, dateRange, config);
+			await collectRepoFixtures(
+				octokit,
+				owner,
+				repo,
+				dateRange,
+				config,
+				includePrs,
+			);
 		} catch (error) {
 			console.error(`Error collecting fixtures for ${owner}/${repo}:`, error);
 			process.exit(1);

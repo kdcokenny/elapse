@@ -1,0 +1,40 @@
+{
+	"shipped": {
+		"bob": [
+			{
+				"summary": "Merged comprehensive API documentation update with endpoint specifications",
+				"category": "docs",
+				"significance": "medium",
+				"branch": "docs/api-updates",
+				"prNumber": 102,
+				"prTitle": "docs: Update API documentation",
+				"sha": "abc1230000000000000000000000000000000008"
+			}
+		]
+	},
+	"progress": {},
+	"blockers": [],
+	"featureNarrations": {
+		"102": {
+			"featureName": "API Documentation Update",
+			"impact": "Added endpoint documentation for new authentication and payment APIs"
+		}
+	},
+	"mergedPRs": [102],
+	"expectations": {
+		"totalCommits": 1,
+		"blockers": {
+			"count": 0,
+			"branches": [],
+			"types": []
+		},
+		"shipped": {
+			"featureCount": 1,
+			"featureNames": ["API Documentation Update"]
+		},
+		"inProgress": {
+			"branchCount": 0,
+			"branches": []
+		}
+	}
+}

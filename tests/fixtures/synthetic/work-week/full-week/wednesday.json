@@ -1,0 +1,82 @@
+{
+	"shipped": {
+		"dave": [
+			{
+				"summary": "Fixed critical rate limiter bypass vulnerability in token validation middleware",
+				"category": "bugfix",
+				"significance": "critical",
+				"branch": "fix/rate-limiter",
+				"prNumber": 202,
+				"prTitle": "fix: Rate limiter bypass vulnerability",
+				"sha": "def4560000000000000000000000000000000004"
+			}
+		]
+	},
+	"progress": {
+		"alice": [
+			{
+				"summary": "Fixed token refresh error handling based on code review feedback",
+				"category": "feature",
+				"significance": "medium",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000005"
+			},
+			{
+				"summary": "Added comprehensive test coverage for OAuth2 authentication flow",
+				"category": "test",
+				"significance": "medium",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000006"
+			}
+		],
+		"carol": [
+			{
+				"summary": "Added payment validation logic with amount and currency checks",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/payment-flow",
+				"prNumber": 201,
+				"prTitle": "feat: Add payment processing flow",
+				"sha": "def4560000000000000000000000000000000005"
+			}
+		]
+	},
+	"blockers": [
+		{
+			"type": "changes_requested",
+			"description": "Need to add error handling for token refresh",
+			"reviewer": "bob",
+			"prNumber": 101,
+			"prTitle": "feat: Add user authentication v2",
+			"branch": "feature/auth-v2",
+			"user": "alice"
+		}
+	],
+	"featureNarrations": {
+		"202": {
+			"featureName": "Rate Limiter Security Fix",
+			"impact": "Patched critical vulnerability that allowed rate limiter bypass"
+		}
+	},
+	"mergedPRs": [202],
+	"expectations": {
+		"totalCommits": 4,
+		"blockers": {
+			"count": 1,
+			"branches": ["feature/auth-v2"],
+			"types": ["changes_requested"]
+		},
+		"shipped": {
+			"featureCount": 1,
+			"featureNames": ["Rate Limiter Security Fix"]
+		},
+		"inProgress": {
+			"branchCount": 2,
+			"branches": ["feature/auth-v2", "feature/payment-flow"]
+		}
+	}
+}

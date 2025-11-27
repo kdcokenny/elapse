@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-	buildNarratorPrompt,
-	buildNarratorUserPrompt,
+	buildFeatureNarratorPrompt,
+	buildFeatureNarratorUserPrompt,
 	buildTranslatorPrompt,
 	buildTranslatorSystemPrompt,
 	buildTranslatorUserPrompt,
@@ -91,37 +91,45 @@ describe("buildTranslatorPrompt", () => {
 	});
 });
 
-describe("buildNarratorUserPrompt", () => {
+describe("buildFeatureNarratorUserPrompt", () => {
 	test("handles empty translations", () => {
-		const prompt = buildNarratorUserPrompt([], "2024-01-15");
-		expect(prompt).toBe("No updates today.");
+		const prompt = buildFeatureNarratorUserPrompt("Test PR", 123, []);
+		expect(prompt).toContain("No meaningful commits");
 	});
 
 	test("numbers translations", () => {
 		const translations = ["Added auth", "Fixed bug", "Improved perf"];
-		const prompt = buildNarratorUserPrompt(translations, "2024-01-15");
+		const prompt = buildFeatureNarratorUserPrompt("Test PR", 123, translations);
 
 		expect(prompt).toContain("1. Added auth");
 		expect(prompt).toContain("2. Fixed bug");
 		expect(prompt).toContain("3. Improved perf");
 	});
 
-	test("includes date", () => {
-		const prompt = buildNarratorUserPrompt(["Update"], "2024-01-15");
-		expect(prompt).toContain("2024-01-15");
+	test("includes PR title and number", () => {
+		const prompt = buildFeatureNarratorUserPrompt("My Feature", 456, [
+			"Update",
+		]);
+		expect(prompt).toContain("PR #456");
+		expect(prompt).toContain("My Feature");
 	});
 });
 
-describe("buildNarratorPrompt", () => {
+describe("buildFeatureNarratorPrompt", () => {
 	test("returns system and user prompts", () => {
-		const result = buildNarratorPrompt(["Update"], "2024-01-15");
+		const result = buildFeatureNarratorPrompt("Test PR", 123, ["Update"]);
 
 		expect(result).toHaveProperty("system");
 		expect(result).toHaveProperty("user");
 	});
 
 	test("passes context to system prompt", () => {
-		const result = buildNarratorPrompt(["Update"], "2024-01-15", "my project");
+		const result = buildFeatureNarratorPrompt(
+			"Test PR",
+			123,
+			["Update"],
+			"my project",
+		);
 		expect(result.system).toContain("my project");
 	});
 });

@@ -1,0 +1,111 @@
+{
+	"shipped": {},
+	"progress": {
+		"alice": [
+			{
+				"summary": "Added comprehensive error handling for OAuth2 authentication flow",
+				"category": "feature",
+				"significance": "medium",
+				"branch": "feature/auth-v2",
+				"prNumber": 101,
+				"prTitle": "feat: Add user authentication v2",
+				"sha": "abc1230000000000000000000000000000000003"
+			}
+		],
+		"bob": [
+			{
+				"summary": "Created API endpoint documentation with usage examples",
+				"category": "docs",
+				"significance": "medium",
+				"branch": "docs/api-updates",
+				"prNumber": 102,
+				"prTitle": "docs: Update API documentation",
+				"sha": "abc1230000000000000000000000000000000004"
+			}
+		],
+		"carol": [
+			{
+				"summary": "Implemented payment webhook handler for Stripe event processing",
+				"category": "feature",
+				"significance": "high",
+				"branch": "feature/payment-flow",
+				"prNumber": 201,
+				"prTitle": "feat: Add payment processing flow",
+				"sha": "def4560000000000000000000000000000000003"
+			}
+		]
+	},
+	"blockers": [
+		{
+			"type": "changes_requested",
+			"description": "Need to add error handling for token refresh",
+			"reviewer": "bob",
+			"prNumber": 101,
+			"prTitle": "feat: Add user authentication v2",
+			"branch": "feature/auth-v2",
+			"user": "alice"
+		},
+		{
+			"type": "pending_review",
+			"description": "Waiting on: bob",
+			"reviewer": "bob",
+			"prNumber": 101,
+			"prTitle": "feat: Add user authentication v2",
+			"branch": "feature/auth-v2",
+			"user": "alice"
+		},
+		{
+			"type": "pending_review",
+			"description": "Waiting on: alice",
+			"reviewer": "alice",
+			"prNumber": 102,
+			"prTitle": "docs: Update API documentation",
+			"branch": "docs/api-updates",
+			"user": "bob"
+		},
+		{
+			"type": "pending_review",
+			"description": "Waiting on: eve",
+			"reviewer": "eve",
+			"prNumber": 201,
+			"prTitle": "feat: Add payment processing flow",
+			"branch": "feature/payment-flow",
+			"user": "carol"
+		},
+		{
+			"type": "comment",
+			"description": "Need security review before merging",
+			"commentId": 101,
+			"prNumber": 202,
+			"prTitle": "fix: Rate limiter bypass vulnerability",
+			"branch": "fix/rate-limiter",
+			"user": "dave"
+		}
+	],
+	"mergedPRs": [],
+	"expectations": {
+		"totalCommits": 3,
+		"blockers": {
+			"count": 5,
+			"branches": [
+				"feature/auth-v2",
+				"docs/api-updates",
+				"feature/payment-flow",
+				"fix/rate-limiter"
+			],
+			"types": ["changes_requested", "pending_review", "comment"]
+		},
+		"shipped": {
+			"featureCount": 0,
+			"featureNames": []
+		},
+		"inProgress": {
+			"branchCount": 3,
+			"branches": [
+				"feature/auth-v2",
+				"docs/api-updates",
+				"feature/payment-flow"
+			]
+		}
+	}
+}

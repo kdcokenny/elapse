@@ -26,32 +26,31 @@ export function truncateDiff(diff: string): {
 }
 
 /**
- * Build the system prompt for the translator (diff → business sentence).
+ * Build the system prompt for the translator (diff → structured summary).
  */
 export function buildTranslatorSystemPrompt(projectContext?: string): string {
 	const context = projectContext || "a software project";
 
-	return `You are a technical writer who translates git commits into clear, stakeholder-friendly sentences.
+	return `You are a technical writer who translates git commits into structured summaries for stakeholders.
 
 Context: You are writing updates for ${context}.
 
+For each commit, determine:
+1. action: "include" for meaningful changes, "skip" for trivial changes
+2. summary: Business-value sentence (max 20 words, past tense, active voice)
+3. category: One of feature, fix, improvement, refactor, docs, chore
+4. significance: high (user-facing), medium (internal), low (minor)
+
 Rules:
-1. Focus on BUSINESS VALUE, not technical implementation details
-2. Write a SINGLE sentence, maximum 20 words
-3. Use active voice and past tense (e.g., "Added...", "Fixed...", "Improved...")
-4. If the change is trivial (typos, formatting, comments only), respond with exactly "SKIP"
-5. Don't mention file names, function names, or technical jargon unless essential
+- Focus on BUSINESS VALUE, not technical implementation
+- Don't mention file names, function names, or technical jargon
+- Use SKIP for: typos, formatting, whitespace, comments, import reordering
 
-Examples of good translations:
-- "Added user authentication so customers can securely access their accounts"
-- "Fixed a bug that was causing checkout failures for some users"
-- "Improved page load performance by optimizing database queries"
-
-Examples of SKIP-worthy changes:
-- Typo fixes in comments
-- Code formatting changes
-- Whitespace adjustments
-- Import reordering`;
+Examples:
+- feature/high: "Added user authentication so customers can securely access their accounts"
+- fix/high: "Fixed a bug that was causing checkout failures for some users"
+- improvement/medium: "Improved page load performance by optimizing database queries"
+- refactor/low: "Reorganized code for better maintainability"`;
 }
 
 /**
@@ -97,51 +96,123 @@ export function buildTranslatorPrompt(
 }
 
 /**
- * Build the system prompt for the narrator (sentences → daily summary).
+ * Build the system prompt for comment blocker analysis.
  */
-export function buildNarratorSystemPrompt(projectContext?: string): string {
-	const context = projectContext || "a software project";
+export function buildCommentAnalysisSystemPrompt(): string {
+	return `You analyze PR comments to determine if they indicate a blocker or resolve one.
 
-	return `You are a technical writer creating daily standup summaries for stakeholders.
+A BLOCKER is something preventing the PR from being merged or work from progressing:
+- External dependencies ("waiting on API from team X", "blocked by #123")
+- Review concerns ("needs security review", "architecture decision needed")
+- Technical issues ("CI failing", "tests broken", "need to fix X first")
+- Resource blockers ("need access to prod", "waiting for credentials")
+- Questions that must be answered before proceeding
 
-Context: You are writing about ${context}.
+A RESOLUTION is when a previously mentioned blocker is addressed:
+- "Fixed", "Resolved", "Done", "Addressed"
+- "No longer blocked", "Got access", "This is ready now"
+- Approval or confirmation language
+- Answers to blocking questions
 
-Rules:
-1. Create a cohesive 2-3 paragraph narrative from the individual updates
-2. Group related work together (e.g., all auth-related changes in one section)
-3. Highlight the most impactful work first
-4. Be professional but conversational - not robotic
-5. Focus on outcomes and progress, not process
-6. Don't use bullet points - write in prose
-7. If there's only one update, write a brief single paragraph`;
+Important:
+- Most comments are NOT blockers (discussions, reviews, suggestions)
+- Only flag clear blocking statements, not minor concerns
+- When in doubt, use action "none"
+- Description should be brief (max 15 words), only for add_blocker`;
 }
 
 /**
- * Build the user prompt for the narrator.
+ * Build the user prompt for comment blocker analysis.
  */
-export function buildNarratorUserPrompt(
+export function buildCommentAnalysisUserPrompt(
+	prTitle: string,
+	prNumber: number,
+	commentBody: string,
+): string {
+	return `PR #${prNumber}: "${prTitle}"
+
+Comment:
+${commentBody}`;
+}
+
+/**
+ * Build the complete comment analysis prompt object.
+ */
+export function buildCommentAnalysisPrompt(
+	prTitle: string,
+	prNumber: number,
+	commentBody: string,
+): { system: string; user: string } {
+	return {
+		system: buildCommentAnalysisSystemPrompt(),
+		user: buildCommentAnalysisUserPrompt(prTitle, prNumber, commentBody),
+	};
+}
+
+// =============================================================================
+// Feature Narrator Prompts (PR → Feature Summary)
+// =============================================================================
+
+/**
+ * Build the system prompt for feature-level narration.
+ * Converts PR translations into a human-readable feature name and impact.
+ */
+export function buildFeatureNarratorSystemPrompt(
+	projectContext?: string,
+): string {
+	const context = projectContext || "a software project";
+
+	return `You are a technical writer creating feature summaries for stakeholders.
+
+Context: You are writing about ${context}.
+
+Given a PR title and list of commit translations, generate:
+1. featureName: Human-readable headline (max 8 words, action-oriented)
+2. impact: Business value statement (max 20 words)
+
+Rules:
+- Feature name: "Improved X", "Added Y", "Fixed Z" format
+- Impact explains WHY this matters to users/business
+- No technical jargon (API, database, refactor) unless essential
+- Focus on outcomes, not implementation
+
+Examples:
+- featureName: "Improved checkout experience", impact: "Reduced cart abandonment by simplifying the payment flow"
+- featureName: "Added team collaboration features", impact: "Teams can now share projects and work together in real-time"
+- featureName: "Fixed login issues for mobile users", impact: "Mobile users can now reliably access their accounts"`;
+}
+
+/**
+ * Build the user prompt for feature-level narration.
+ */
+export function buildFeatureNarratorUserPrompt(
+	prTitle: string,
+	prNumber: number,
 	translations: string[],
-	date: string,
 ): string {
 	if (translations.length === 0) {
-		return "No updates today.";
+		return `PR #${prNumber}: "${prTitle}"\n\nNo meaningful commits.`;
 	}
 
 	const numbered = translations.map((t, i) => `${i + 1}. ${t}`).join("\n");
 
-	return `Create a daily summary for ${date} from these updates:\n\n${numbered}`;
+	return `PR #${prNumber}: "${prTitle}"
+
+Commits:
+${numbered}`;
 }
 
 /**
- * Build the complete narrator prompt object.
+ * Build the complete feature narrator prompt object.
  */
-export function buildNarratorPrompt(
+export function buildFeatureNarratorPrompt(
+	prTitle: string,
+	prNumber: number,
 	translations: string[],
-	date: string,
 	projectContext?: string,
 ): { system: string; user: string } {
 	return {
-		system: buildNarratorSystemPrompt(projectContext),
-		user: buildNarratorUserPrompt(translations, date),
+		system: buildFeatureNarratorSystemPrompt(projectContext),
+		user: buildFeatureNarratorUserPrompt(prTitle, prNumber, translations),
 	};
 }
