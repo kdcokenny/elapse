@@ -5,6 +5,7 @@
 	"scripts": {
 		"start": "bun src/index.ts",
 		"dev": "bun --watch src/index.ts",
+		"doctor": "bun src/doctor.ts",
 		"test": "bun test tests/core/",
 		"test:all": "bun test",
 		"test:e2e": "bun test tests/e2e/ --timeout 180000",
