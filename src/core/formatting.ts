@@ -135,6 +135,13 @@ export function formatDate(date: string): string {
 }
 
 /**
+ * Format a "no activity" report for days with no engineering activity.
+ */
+export function formatNoActivityReport(date: string): string {
+	return `🚀 **Daily Engineering Summary — ${formatDate(date)}**\n\n📭 **No engineering activity recorded today**\n`;
+}
+
+/**
  * Get today's date in YYYY-MM-DD format.
  */
 export function getTodayDate(timezone?: string): string {

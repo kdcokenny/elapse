@@ -11,6 +11,7 @@ import {
 	type BranchSummary,
 	type FeatureSummary,
 	formatFeatureCentricReport,
+	formatNoActivityReport,
 	getTodayDate,
 } from "./core/formatting";
 import { DiscordWebhookError } from "./errors";
@@ -214,7 +215,7 @@ async function generateReport(date: string): Promise<string | null> {
 
 	if (!hasShipped && !hasProgress && !hasBlockers) {
 		log.info("No activity to report for date");
-		return null;
+		return formatNoActivityReport(date);
 	}
 
 	log.debug(
@@ -257,7 +258,7 @@ async function generateReport(date: string): Promise<string | null> {
 		blockersSummary.length === 0
 	) {
 		log.info("No meaningful content to report");
-		return null;
+		return formatNoActivityReport(date);
 	}
 
 	// Format the report with feature-centric format
