@@ -2,7 +2,7 @@
  * Pure functions for formatting output messages.
  */
 
-import type { BlockerSummary } from "./blockers";
+import type { UserBlockerGroup } from "./blockers";
 
 /**
  * Feature summary for the shipped section (feature-centric format).
@@ -22,6 +22,12 @@ export interface BranchSummary {
 	commitCount: number;
 	prTitle?: string;
 	prNumber?: number;
+	/** Whether this PR had commits today (undefined = unknown, for legacy) */
+	hasActivityToday?: boolean;
+	/** AI-generated feature name (e.g., "User authentication improvements") */
+	featureName?: string;
+	/** AI-generated business impact (e.g., "Enhanced login security") */
+	impact?: string;
 }
 
 export interface ActivityStats {
@@ -37,7 +43,7 @@ export interface ActivityStats {
  */
 export function formatFeatureCentricReport(
 	date: string,
-	blockers: BlockerSummary[],
+	blockerGroups: UserBlockerGroup[],
 	shipped: FeatureSummary[],
 	progress: BranchSummary[],
 	stats: ActivityStats,
@@ -45,22 +51,32 @@ export function formatFeatureCentricReport(
 	let report = `🚀 **Daily Engineering Summary — ${formatDate(date)}**\n\n`;
 
 	// Check for empty day
-	if (blockers.length === 0 && shipped.length === 0 && progress.length === 0) {
+	if (
+		blockerGroups.length === 0 &&
+		shipped.length === 0 &&
+		progress.length === 0
+	) {
 		report += `📭 **No engineering activity recorded today**\n`;
 		return report;
 	}
 
-	// BLOCKERS SECTION (first - highest priority)
-	if (blockers.length > 0) {
+	// BLOCKERS SECTION (first - highest priority, grouped by user)
+	if (blockerGroups.length > 0) {
 		report += `🔴 **BLOCKERS**\n\n`;
-		for (const b of blockers) {
-			// User-first format: person is prominent, blocker description is the lead
-			report += `• ${b.user}: ${b.description}\n`;
-			// PR context on sub-line
-			const context = b.prTitle ? `${b.prTitle} (${b.branch})` : b.branch;
-			report += `  → ${context}\n`;
-			if (b.prNumber) {
-				report += `  → PR #${b.prNumber}\n`;
+		for (const group of blockerGroups) {
+			// Show count suffix only for users with 2+ blockers
+			const countSuffix =
+				group.blockers.length > 1 ? ` (${group.blockers.length} blockers)` : "";
+			report += `• ${group.user}${countSuffix}:\n`;
+
+			for (const b of group.blockers) {
+				report += `  → ${b.description}\n`;
+				const context = b.prTitle || b.branch;
+				if (b.prNumber) {
+					report += `    PR #${b.prNumber}: ${context}\n`;
+				} else {
+					report += `    ${context}\n`;
+				}
 			}
 			report += `\n`;
 		}
@@ -83,14 +99,23 @@ export function formatFeatureCentricReport(
 		report += `📍 **IN PROGRESS**\n\n`;
 		for (const p of progress) {
 			const users = p.users.join(", ");
-			// Use "PR Title (branch)" format if prTitle available, otherwise just branch
-			const header = p.prTitle ? `${p.prTitle} (${p.branch})` : p.branch;
+			// Prefer AI-generated featureName, fallback to prTitle/branch
+			const header = p.featureName || p.prTitle || p.branch;
 			report += `• ${header}\n`;
-			// Compact format: users and PR on single line (no commit counts - they're noise)
+
+			// Show impact if available
+			if (p.impact) {
+				report += `  → ${p.impact}\n`;
+			}
+
+			// Show activity indicator: "awaiting review" if no activity today
+			const activityIndicator =
+				p.hasActivityToday === false ? " • awaiting review" : "";
+			// Compact format: users and PR on single line
 			if (p.prNumber) {
-				report += `  → ${users} • PR #${p.prNumber}\n`;
+				report += `  → ${users} • PR #${p.prNumber}${activityIndicator}\n`;
 			} else {
-				report += `  → ${users}\n`;
+				report += `  → ${users}${activityIndicator}\n`;
 			}
 			report += `\n`;
 		}

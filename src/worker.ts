@@ -6,21 +6,20 @@ import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { analyzeComment, translateDiff } from "./ai";
-import {
-	type BlockerResult,
-	isBlockerLabel,
-	type PRBlocker,
-	parseCommitBlockers,
-	parseDescriptionBlockers,
-} from "./core/blockers";
 import { classifyBranch } from "./core/branches";
 import { getPrivateKey } from "./credentials";
 import { DiffTooLargeError, GitHubAPIError, NonRetryableError } from "./errors";
 import { workerLogger } from "./logger";
 import {
+	addDirectCommit,
+	addPRToDay,
+	addPRTranslation,
+	createOrUpdatePR,
+	getPRBlockers,
 	redis,
+	removePRBlocker,
 	resolveBlockersForPR,
-	storeBlockers,
+	setPRBlocker,
 	storePersistentBlocker,
 	storeTranslation,
 } from "./redis";
@@ -84,137 +83,6 @@ async function fetchDiff(
 	return response.data as unknown as string;
 }
 
-// Enable/disable blocker extraction via env
-const EXTRACT_BLOCKERS = process.env.EXTRACT_BLOCKERS !== "false";
-
-/**
- * Extract blockers from PR data for a branch.
- */
-async function extractBlockersFromPR(
-	octokit: Octokit,
-	owner: string,
-	repo: string,
-	branch: string,
-	user: string,
-	message: string,
-): Promise<BlockerResult | null> {
-	const blockers: PRBlocker[] = [];
-
-	// First, check commit message for blocker signals
-	const commitSignals = parseCommitBlockers(message);
-	for (const signal of commitSignals) {
-		blockers.push({
-			type: "commit_signal",
-			description:
-				signal.type === "depends" && signal.dependency
-					? `Depends on #${signal.dependency}`
-					: `${signal.type.toUpperCase()} noted in commit`,
-			branch,
-			user,
-		});
-	}
-
-	// Find open PR for this branch
-	try {
-		const { data: prs } = await octokit.pulls.list({
-			owner,
-			repo,
-			head: `${owner}:${branch}`,
-			state: "open",
-		});
-
-		if (prs.length === 0) {
-			// No PR yet - only commit message blockers
-			return blockers.length > 0 ? { blockers } : null;
-		}
-
-		const pr = prs[0];
-		if (!pr) return blockers.length > 0 ? { blockers } : null;
-
-		// Check for blocking labels
-		for (const label of pr.labels) {
-			const name = typeof label === "string" ? label : label.name;
-			if (name && isBlockerLabel(name)) {
-				blockers.push({
-					type: "label",
-					description: `PR #${pr.number} labeled "${name}"`,
-					prNumber: pr.number,
-					branch,
-					user,
-				});
-			}
-		}
-
-		// Parse description for blocker section
-		const descriptionBlocker = parseDescriptionBlockers(pr.body);
-		if (descriptionBlocker) {
-			blockers.push({
-				type: "description",
-				description: descriptionBlocker,
-				prNumber: pr.number,
-				branch,
-				user,
-			});
-		}
-
-		// Check pending reviewers
-		const pendingReviewers = pr.requested_reviewers || [];
-		for (const reviewer of pendingReviewers) {
-			if (reviewer && "login" in reviewer) {
-				blockers.push({
-					type: "pending_review",
-					description: `Waiting on review from @${reviewer.login}`,
-					reviewer: reviewer.login,
-					prNumber: pr.number,
-					branch,
-					user,
-				});
-			}
-		}
-
-		// Check for CHANGES_REQUESTED reviews
-		const { data: reviews } = await octokit.pulls.listReviews({
-			owner,
-			repo,
-			pull_number: pr.number,
-		});
-
-		// Get latest review per reviewer
-		const latestByReviewer = new Map<string, (typeof reviews)[0]>();
-		for (const review of reviews) {
-			if (review.user?.login) {
-				latestByReviewer.set(review.user.login, review);
-			}
-		}
-
-		for (const [reviewer, review] of latestByReviewer) {
-			if (review.state === "CHANGES_REQUESTED") {
-				blockers.push({
-					type: "changes_requested",
-					description: `Changes requested by @${reviewer}`,
-					reviewer,
-					prNumber: pr.number,
-					branch,
-					user,
-				});
-			}
-		}
-
-		return {
-			blockers,
-			prTitle: pr.title,
-			prUrl: pr.html_url,
-		};
-	} catch (error) {
-		// Non-critical - just skip blocker extraction on error
-		workerLogger.debug(
-			{ err: error, branch },
-			"Failed to extract blockers from PR",
-		);
-		return blockers.length > 0 ? { blockers } : null;
-	}
-}
-
 /**
  * Process a single digest job.
  */
@@ -243,6 +111,7 @@ async function processDigestJob(
 		user,
 		branch,
 		section,
+		prNumber,
 	});
 
 	log.info("Processing commit");
@@ -276,39 +145,73 @@ async function processDigestJob(
 			return { translation: "SKIP", section };
 		}
 
-		// Store in Redis with section and metadata
+		// Validate: action=include requires a summary
+		if (!result.summary) {
+			log.warn("AI returned include without summary, treating as skip");
+			return { translation: "SKIP", section };
+		}
+
+		const summary = result.summary;
 		const date = timestamp.split("T")[0] ?? timestamp; // YYYY-MM-DD
-		await storeTranslation(date, user, section, {
-			summary: result.summary ?? "",
-			category: result.category,
-			significance: result.significance,
-			branch,
-			prNumber,
-			sha,
-		});
 
-		// Extract blockers for non-main branches
-		if (section === "progress" && EXTRACT_BLOCKERS) {
-			const blockerResult = await extractBlockersFromPR(
-				octokit,
-				owner,
-				repoName,
+		// PR-centric storage: route based on whether this commit is PR-associated
+		if (prNumber) {
+			const prTitle = `PR #${prNumber}`;
+
+			// Create or update PR metadata
+			await createOrUpdatePR(prNumber, {
+				repo,
 				branch,
-				user,
-				message,
-			);
+				title: prTitle,
+				authors: [user],
+				status: "open",
+			});
 
-			if (blockerResult?.blockers.length) {
-				await storeBlockers(date, blockerResult.blockers);
-				log.debug(
-					{ blockerCount: blockerResult.blockers.length },
-					"Stored blockers",
-				);
-			}
+			// Add translation to PR
+			await addPRTranslation(prNumber, {
+				sha,
+				summary,
+				category: result.category,
+				significance: result.significance,
+				author: user,
+				timestamp,
+			});
+
+			// Add PR to daily index
+			await addPRToDay(date, prNumber);
+
+			// Also store in legacy format for backwards compatibility during migration
+			await storeTranslation(date, user, section, {
+				summary,
+				category: result.category,
+				significance: result.significance,
+				branch,
+				prNumber,
+				prTitle,
+				sha,
+			});
+		} else {
+			// Direct commit (no PR) - store in direct commits bucket
+			await addDirectCommit(date, {
+				summary,
+				category: result.category,
+				significance: result.significance,
+				branch,
+				sha,
+			});
+
+			// Also store in legacy format for backwards compatibility
+			await storeTranslation(date, user, section, {
+				summary,
+				category: result.category,
+				significance: result.significance,
+				branch,
+				sha,
+			});
 		}
 
 		log.info("Commit processed successfully");
-		return { translation: result.summary ?? "", section };
+		return { translation: summary, section };
 	} catch (error) {
 		// Non-retryable errors should fail immediately
 		if (error instanceof NonRetryableError) {
@@ -363,7 +266,15 @@ async function processCommentJob(
 		});
 
 		if (result.action === "add_blocker" && result.description) {
-			// Store the blocker
+			// Store the blocker in PR-centric storage
+			await setPRBlocker(prNumber, `comment:${commentId}`, {
+				type: "comment",
+				description: result.description,
+				commentId,
+				detectedAt: new Date().toISOString(),
+			});
+
+			// Also store in legacy persistent blockers for backwards compatibility
 			await storePersistentBlocker({
 				type: "comment",
 				description: result.description,
@@ -379,9 +290,18 @@ async function processCommentJob(
 				"Blocker detected from comment",
 			);
 		} else if (result.action === "resolve_blocker") {
-			// Resolve blockers for this PR
+			// Remove all blockers from PR-centric storage when a resolution is detected
+			const blockers = await getPRBlockers(prNumber);
+			for (const [key] of blockers) {
+				await removePRBlocker(prNumber, key);
+			}
+
+			// Also resolve in legacy storage
 			const removed = await resolveBlockersForPR(repo, prNumber);
-			log.info({ removed }, "Blockers resolved from comment");
+			log.info(
+				{ removed, prBlockersRemoved: blockers.size },
+				"Blockers resolved from comment",
+			);
 		} else {
 			log.debug("Comment did not indicate a blocker");
 		}

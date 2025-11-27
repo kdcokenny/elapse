@@ -1,15 +1,6 @@
 /**
- * Blocker detection and types for extracting blockers from commits and PRs.
+ * Blocker detection and types for extracting blockers from PRs.
  */
-
-/**
- * Blocker signal extracted from commit messages.
- */
-export interface CommitBlockerSignal {
-	type: "wip" | "todo" | "blocked" | "depends";
-	raw: string;
-	dependency?: string; // PR/issue number if depends on something
-}
 
 /**
  * Blocker extracted from PR data via GitHub API or AI analysis of comments.
@@ -20,7 +11,6 @@ export interface PRBlocker {
 		| "pending_review"
 		| "label"
 		| "description"
-		| "commit_signal"
 		| "comment"; // AI-detected from PR comment
 	description: string;
 	reviewer?: string; // Who requested changes / is pending review
@@ -30,15 +20,6 @@ export interface PRBlocker {
 	user: string; // PR author or commit author
 	commentId?: number; // Source comment ID (for comment type)
 	detectedAt?: string; // ISO timestamp when blocker was detected
-}
-
-/**
- * Result of blocker extraction from a PR.
- */
-export interface BlockerResult {
-	blockers: PRBlocker[];
-	prTitle?: string;
-	prUrl?: string;
 }
 
 /**
@@ -52,19 +33,19 @@ export interface BlockerSummary {
 	prTitle?: string;
 }
 
-// Patterns for detecting blockers in commit messages
-const BLOCKER_PATTERNS: Array<{
-	pattern: RegExp;
-	type: CommitBlockerSignal["type"];
-}> = [
-	{ pattern: /^WIP:\s*/i, type: "wip" },
-	{ pattern: /^TODO:\s*/i, type: "todo" },
-	{ pattern: /^BLOCKED:\s*/i, type: "blocked" },
-	{ pattern: /\bWIP\b/i, type: "wip" },
-	{ pattern: /depends on #(\d+)/i, type: "depends" },
-	{ pattern: /waiting on #(\d+)/i, type: "depends" },
-	{ pattern: /blocked by #(\d+)/i, type: "depends" },
-];
+/**
+ * Blockers grouped by user for report display.
+ * Consolidates multiple blockers per person into a single entry.
+ */
+export interface UserBlockerGroup {
+	user: string;
+	blockers: Array<{
+		description: string;
+		branch: string;
+		prNumber?: number;
+		prTitle?: string;
+	}>;
+}
 
 // Labels that indicate blockers (configurable via env)
 const BLOCKER_LABELS = (
@@ -73,26 +54,6 @@ const BLOCKER_LABELS = (
 	.split(",")
 	.map((l) => l.trim().toLowerCase())
 	.filter((l) => l.length > 0);
-
-/**
- * Parse blocker signals from a commit message.
- */
-export function parseCommitBlockers(message: string): CommitBlockerSignal[] {
-	const signals: CommitBlockerSignal[] = [];
-
-	for (const { pattern, type } of BLOCKER_PATTERNS) {
-		const match = message.match(pattern);
-		if (match) {
-			signals.push({
-				type,
-				raw: match[0],
-				dependency: match[1], // capture group if present
-			});
-		}
-	}
-
-	return signals;
-}
 
 /**
  * Check if a label name matches any of the configured blocker labels.
@@ -123,56 +84,39 @@ export function parseDescriptionBlockers(body: string | null): string | null {
 }
 
 /**
- * Get priority for blocker types (lower = more urgent).
+ * Group blockers by user for consolidated display.
+ * Returns users sorted by blocker count (descending), then alphabetically.
  */
-export function blockerPriority(type: PRBlocker["type"]): number {
-	const priorities: Record<PRBlocker["type"], number> = {
-		changes_requested: 1, // Most urgent
-		pending_review: 2,
-		comment: 2.5, // AI-detected from PR comments
-		label: 3,
-		description: 4,
-		commit_signal: 5,
-	};
-	return priorities[type];
-}
-
-/**
- * Generate blockers section from a list of blockers.
- * Groups by branch and picks highest priority blocker per branch.
- */
-export function generateBlockersSummary(
-	blockers: PRBlocker[],
-): BlockerSummary[] {
+export function groupBlockersByUser(
+	blockers: BlockerSummary[],
+): UserBlockerGroup[] {
 	if (blockers.length === 0) return [];
 
-	// Group by branch
-	const byBranch = new Map<string, PRBlocker[]>();
+	// Group by user
+	const byUser = new Map<string, UserBlockerGroup["blockers"]>();
 	for (const b of blockers) {
-		if (!byBranch.has(b.branch)) {
-			byBranch.set(b.branch, []);
+		let userBlockers = byUser.get(b.user);
+		if (!userBlockers) {
+			userBlockers = [];
+			byUser.set(b.user, userBlockers);
 		}
-		byBranch.get(b.branch)?.push(b);
+		userBlockers.push({
+			description: b.description,
+			branch: b.branch,
+			prNumber: b.prNumber,
+			prTitle: b.prTitle,
+		});
 	}
 
-	const summaries: BlockerSummary[] = [];
-	for (const [branch, branchBlockers] of byBranch) {
-		// Sort by priority (ascending) and pick first
-		const sorted = branchBlockers.sort(
-			(a, b) => blockerPriority(a.type) - blockerPriority(b.type),
-		);
-		const primary = sorted[0];
+	// Convert to array and sort: by blocker count (desc), then alphabetically
+	const groups: UserBlockerGroup[] = Array.from(byUser.entries())
+		.map(([user, blockers]) => ({ user, blockers }))
+		.sort((a, b) => {
+			if (b.blockers.length !== a.blockers.length) {
+				return b.blockers.length - a.blockers.length;
+			}
+			return a.user.localeCompare(b.user);
+		});
 
-		if (primary) {
-			summaries.push({
-				branch,
-				description: primary.description,
-				user: primary.user,
-				prNumber: primary.prNumber,
-				prTitle: primary.prTitle,
-			});
-		}
-	}
-
-	return summaries;
+	return groups;
 }

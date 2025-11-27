@@ -33,19 +33,6 @@ export class NonRetryableError extends ElapseError {}
 
 export class GitHubAPIError extends RetryableError {}
 
-export class GitHubRateLimitError extends RetryableError {
-	constructor(
-		public readonly resetAt: Date,
-		cause?: Error,
-	) {
-		super(
-			`GitHub rate limit exceeded, resets at ${resetAt.toISOString()}`,
-			resetAt.getTime() - Date.now(),
-			cause,
-		);
-	}
-}
-
 export class AIProviderError extends RetryableError {}
 
 export class AIProviderTimeoutError extends AIProviderError {
@@ -61,5 +48,3 @@ export class DiffTooLargeError extends NonRetryableError {
 		super(`Diff size ${size} exceeds maximum ${maxSize}`);
 	}
 }
-
-export class InvalidPayloadError extends NonRetryableError {}
