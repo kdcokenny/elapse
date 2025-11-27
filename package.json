@@ -1,6 +1,6 @@
 {
 	"name": "elapse",
-	"version": "1.0.0-alpha.5",
+	"version": "1.0.0-alpha.6",
 	"type": "module",
 	"scripts": {
 		"start": "bun src/index.ts",

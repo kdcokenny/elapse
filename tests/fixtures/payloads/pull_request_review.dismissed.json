@@ -1,0 +1,52 @@
+{
+	"action": "dismissed",
+	"review": {
+		"id": 1234567890,
+		"node_id": "PRR_test123",
+		"user": {
+			"login": "reviewer-alice",
+			"id": 12345,
+			"type": "User"
+		},
+		"body": "Please address the performance concerns before merging.",
+		"state": "dismissed",
+		"html_url": "https://github.com/test-org/test-repo/pull/42#pullrequestreview-1234567890",
+		"submitted_at": "2025-01-15T10:30:00Z"
+	},
+	"pull_request": {
+		"number": 42,
+		"title": "feat: add user authentication",
+		"state": "open",
+		"user": {
+			"login": "developer-bob",
+			"id": 67890,
+			"type": "User"
+		},
+		"head": {
+			"ref": "feature/auth",
+			"sha": "abc123def456"
+		},
+		"base": {
+			"ref": "main"
+		},
+		"html_url": "https://github.com/test-org/test-repo/pull/42"
+	},
+	"repository": {
+		"id": 123456789,
+		"full_name": "test-org/test-repo",
+		"name": "test-repo",
+		"private": false,
+		"owner": {
+			"login": "test-org",
+			"type": "Organization"
+		}
+	},
+	"installation": {
+		"id": 98765
+	},
+	"sender": {
+		"login": "admin-user",
+		"id": 11111,
+		"type": "User"
+	}
+}

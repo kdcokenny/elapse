@@ -275,3 +275,29 @@ export async function getActivePersistentBlockers(): Promise<PRBlocker[]> {
 	const raw = await client.hgetall(PERSISTENT_BLOCKERS_KEY);
 	return Object.values(raw).map((r) => JSON.parse(r) as PRBlocker);
 }
+
+/**
+ * Store a review-based blocker (from pull_request_review events).
+ * Key format: prNumber:review:reviewer
+ */
+export async function storeReviewBlocker(blocker: PRBlocker): Promise<void> {
+	if (!blocker.reviewer) return;
+	const id = `${blocker.prNumber}:review:${blocker.reviewer}`;
+	const client = getRedis();
+	await client.hset(PERSISTENT_BLOCKERS_KEY, id, JSON.stringify(blocker));
+	await client.expire(PERSISTENT_BLOCKERS_KEY, PERSISTENT_BLOCKERS_TTL);
+}
+
+/**
+ * Remove a review blocker for a specific reviewer on a PR.
+ * Called when a reviewer approves or their review is dismissed.
+ */
+export async function resolveReviewBlocker(
+	prNumber: number,
+	reviewer: string,
+): Promise<boolean> {
+	const id = `${prNumber}:review:${reviewer}`;
+	const client = getRedis();
+	const removed = await client.hdel(PERSISTENT_BLOCKERS_KEY, id);
+	return removed > 0;
+}

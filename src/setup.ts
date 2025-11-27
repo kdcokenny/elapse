@@ -31,8 +31,15 @@ export function generateManifest(baseUrl: string): string {
 		default_permissions: {
 			contents: "read",
 			metadata: "read",
+			pull_requests: "read",
+			issues: "read",
 		},
-		default_events: ["push"],
+		default_events: [
+			"push",
+			"issue_comment",
+			"pull_request",
+			"pull_request_review",
+		],
 	});
 }
 

@@ -8,7 +8,11 @@ import type { Probot } from "probot";
 import { extractBranchFromRef } from "./core/branches";
 import { type Commit, filterCommits, type Sender } from "./core/filters";
 import { webhookLogger } from "./logger";
-import { resolveBlockersForPR } from "./redis";
+import {
+	resolveBlockersForPR,
+	resolveReviewBlocker,
+	storeReviewBlocker,
+} from "./redis";
 
 export interface DigestJob {
 	repo: string;
@@ -261,6 +265,74 @@ export function createWebhookApp(queue: Queue) {
 				log.error({ err: error }, "Failed to process PR merge event");
 			}
 		});
+
+		// Handle PR reviews for real-time blocker detection
+		app.on(
+			["pull_request_review.submitted", "pull_request_review.dismissed"],
+			async (context) => {
+				const { payload } = context;
+				const log = webhookLogger.child({ delivery: context.id });
+
+				try {
+					const repo = payload.repository.full_name;
+					const prNumber = payload.pull_request.number;
+					const prTitle = payload.pull_request.title;
+					const branch = payload.pull_request.head.ref;
+					const prAuthor = payload.pull_request.user?.login ?? "unknown";
+					const reviewer = payload.review.user?.login;
+					const reviewState = payload.review.state;
+
+					if (!reviewer) {
+						log.debug({ repo, prNumber }, "Review event missing reviewer");
+						return;
+					}
+
+					// Handle review submitted
+					if (payload.action === "submitted") {
+						if (reviewState === "changes_requested") {
+							// Store blocker for this reviewer
+							await storeReviewBlocker({
+								type: "changes_requested",
+								description: `Changes requested by @${reviewer}`,
+								reviewer,
+								prNumber,
+								prTitle,
+								branch,
+								user: prAuthor,
+								detectedAt: new Date().toISOString(),
+							});
+
+							log.info(
+								{ repo, prNumber, reviewer },
+								"Stored changes_requested blocker from review",
+							);
+						} else if (reviewState === "approved") {
+							// Resolve this reviewer's blocker (if any)
+							const resolved = await resolveReviewBlocker(prNumber, reviewer);
+							if (resolved) {
+								log.info(
+									{ repo, prNumber, reviewer },
+									"Resolved blocker after approval",
+								);
+							}
+						}
+					}
+
+					// Handle review dismissed
+					if (payload.action === "dismissed") {
+						const resolved = await resolveReviewBlocker(prNumber, reviewer);
+						if (resolved) {
+							log.info(
+								{ repo, prNumber, reviewer },
+								"Resolved blocker after review dismissed",
+							);
+						}
+					}
+				} catch (error) {
+					log.error({ err: error }, "Failed to process review event");
+				}
+			},
+		);
 
 		// Log app startup
 		app.log.info("Elapse webhook handler loaded");
