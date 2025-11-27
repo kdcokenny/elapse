@@ -99,6 +99,47 @@ docker compose logs -f elapse
 docker compose logs -f redis
 ```
 
+## Verifying Your Setup
+
+Run the doctor command to verify all components are configured correctly:
+
+```bash
+docker compose exec -it elapse bun run doctor
+```
+
+This checks:
+- **Redis connection** - Verifies Redis is reachable
+- **Google Gemini AI** - Tests API key and model configuration
+- **Discord webhook** - Sends a verification code and prompts you to confirm
+- **GitHub App credentials** - Validates JWT generation
+
+Example output:
+```
+Elapse Doctor
+=============
+
+[✓] Redis connection
+    Connected to redis://redis:6379
+
+[✓] Google Gemini AI
+    API connected
+    API key: AIzaSy...
+    Model: gemini-flash-latest
+
+[✓] Discord webhook
+    Sending verification code to Discord...
+    Enter the code you see in Discord: 123456
+    Webhook verified!
+
+[✓] GitHub App credentials
+    Credentials valid
+    App ID: 123456
+    Private key: valid
+
+---
+4 passed
+```
+
 ## Troubleshooting
 
 ### Redis Connection Issues
