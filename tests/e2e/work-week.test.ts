@@ -207,7 +207,7 @@ describe("E2E: Stateful Week Simulation", () => {
 			}
 
 			// Step 4: Generate report using PR-centric model
-			const report = await generateReport(dateStr);
+			const { content: report } = await generateReport(dateStr);
 			console.log(`\n--- ${day.toUpperCase()} REPORT ---`);
 			console.log(report ?? "(no report generated)");
 			console.log("--- END REPORT ---\n");

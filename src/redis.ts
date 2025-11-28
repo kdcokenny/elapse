@@ -303,6 +303,30 @@ export async function resolveReviewBlocker(
 }
 
 // ============================================================================
+// Report Timestamp (for "since last report" tracking)
+// ============================================================================
+
+const LAST_REPORT_KEY = `${KEY_PREFIX}:lastReportTimestamp`;
+
+/**
+ * Get the timestamp of the last successful report.
+ * Returns null if no report has been sent yet.
+ */
+export async function getLastReportTimestamp(): Promise<string | null> {
+	const client = getRedis();
+	return client.get(LAST_REPORT_KEY);
+}
+
+/**
+ * Store the timestamp watermark after a successful report.
+ * This should be the maximum timestamp from the reported data.
+ */
+export async function setLastReportTimestamp(timestamp: string): Promise<void> {
+	const client = getRedis();
+	await client.set(LAST_REPORT_KEY, timestamp);
+}
+
+// ============================================================================
 // PR-Centric Storage (New Architecture)
 // ============================================================================
 
@@ -708,25 +732,61 @@ export interface PRReportData {
 }
 
 /**
- * Get all PR data for a given date.
- * Returns ALL open PRs (regardless of daily activity), merged PRs (that day), and direct commits.
+ * Get all dates between two timestamps (inclusive).
+ * Used to query all day indexes in a "since last report" range.
  */
-export async function getAllPRDataForDate(date: string): Promise<{
+function getDateRange(sinceTimestamp: string, endDate: string): string[] {
+	const dates: string[] = [];
+	const start = new Date(sinceTimestamp);
+	const end = new Date(`${endDate}T23:59:59.999Z`);
+
+	// Normalize to date-only by extracting YYYY-MM-DD
+	const startDateStr = start.toISOString().slice(0, 10);
+	const current = new Date(startDateStr);
+
+	while (current <= end) {
+		dates.push(current.toISOString().slice(0, 10));
+		current.setDate(current.getDate() + 1);
+	}
+
+	return dates;
+}
+
+/**
+ * Get all PR data for reporting.
+ * When sinceTimestamp is provided, returns activity since that timestamp (for "since last report").
+ * Otherwise, returns activity for the given date only (legacy behavior).
+ *
+ * Returns ALL open PRs (regardless of daily activity), merged PRs (since timestamp), and direct commits.
+ */
+export async function getAllPRDataForDate(
+	date: string,
+	sinceTimestamp?: string,
+): Promise<{
 	openPRs: Map<number, PRReportData>;
 	mergedPRs: Map<number, PRReportData & { blockersResolved: string[] }>;
 	directCommits: StoredTranslation[];
 }> {
-	// Get PRs with activity today + all open PRs (union)
-	const [prsWithActivityToday, allOpenPRs] = await Promise.all([
-		getPRsForDay(date),
-		getAllOpenPRNumbers(),
-	]);
+	// Get PRs with activity in the reporting window
+	let prsWithActivity: number[];
+
+	if (sinceTimestamp) {
+		// Query all days from sinceTimestamp to date
+		const dateRange = getDateRange(sinceTimestamp, date);
+		const prSets = await Promise.all(dateRange.map((d) => getPRsForDay(d)));
+		prsWithActivity = [...new Set(prSets.flat())];
+	} else {
+		prsWithActivity = await getPRsForDay(date);
+	}
+
+	// Also include all open PRs (regardless of daily activity)
+	const allOpenPRs = await getAllOpenPRNumbers();
 
 	// Create a set of PRs with activity for quick lookup
-	const activitySet = new Set(prsWithActivityToday);
+	const activitySet = new Set(prsWithActivity);
 
 	// Union of all PR numbers we need to fetch
-	const allPRNumbers = [...new Set([...prsWithActivityToday, ...allOpenPRs])];
+	const allPRNumbers = [...new Set([...prsWithActivity, ...allOpenPRs])];
 
 	// Fetch all PR data in parallel
 	const prDataPromises = allPRNumbers.map(async (prNumber) => {
@@ -750,22 +810,29 @@ export async function getAllPRDataForDate(date: string): Promise<{
 	for (const { prNumber, meta, translations, blockers } of prDataResults) {
 		if (!meta) continue;
 
-		// Filter translations to only those from this date
-		const dayTranslations = translations.filter((t) =>
-			t.timestamp.startsWith(date),
-		);
+		// Filter translations: since timestamp if provided, otherwise by date
+		const filteredTranslations = sinceTimestamp
+			? translations.filter((t) => t.timestamp >= sinceTimestamp)
+			: translations.filter((t) => t.timestamp.startsWith(date));
 
 		const hasActivityToday = activitySet.has(prNumber);
 
-		if (meta.status === "merged" && meta.mergedAt?.startsWith(date)) {
-			// Merged today - include all translations and note resolved blockers
+		// Check if merged since last report (or today if no timestamp)
+		const isMergedInWindow = sinceTimestamp
+			? meta.status === "merged" &&
+				meta.mergedAt &&
+				meta.mergedAt >= sinceTimestamp
+			: meta.status === "merged" && meta.mergedAt?.startsWith(date);
+
+		if (isMergedInWindow) {
+			// Merged in reporting window - include all translations and note resolved blockers
 			const blockersResolved = Array.from(blockers.values())
 				.filter((b) => b.resolvedAt)
 				.map((b) => b.description);
 
 			mergedPRs.set(prNumber, {
 				meta,
-				translations, // All translations, not just today's
+				translations, // All translations, not just window's
 				blockers,
 				hasActivityToday,
 				blockersResolved,
@@ -774,7 +841,7 @@ export async function getAllPRDataForDate(date: string): Promise<{
 			// All open PRs - include regardless of daily activity
 			openPRs.set(prNumber, {
 				meta,
-				translations: dayTranslations,
+				translations: filteredTranslations,
 				blockers,
 				hasActivityToday,
 			});

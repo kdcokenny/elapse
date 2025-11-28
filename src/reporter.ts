@@ -16,7 +16,13 @@ import {
 } from "./core/formatting";
 import { DiscordWebhookError } from "./errors";
 import { reportLogger } from "./logger";
-import { getAllPRDataForDate, redis } from "./redis";
+import {
+	getAllPRDataForDate,
+	getLastReportTimestamp,
+	type PRReportData,
+	redis,
+	setLastReportTimestamp,
+} from "./redis";
 
 const QUEUE_NAME = "elapse";
 const DISCORD_TIMEOUT_MS = 10000;
@@ -70,14 +76,54 @@ async function sendToDiscord(content: string): Promise<void> {
 }
 
 /**
- * Generate the daily report content.
+ * Calculate the watermark timestamp from report data.
+ * Returns the maximum timestamp across all reported items.
  */
-async function generateReport(date: string): Promise<string | null> {
-	const log = reportLogger.child({ date, mode: "pr-centric" });
+function getWatermark(data: {
+	openPRs: Map<number, PRReportData>;
+	mergedPRs: Map<number, PRReportData & { blockersResolved: string[] }>;
+}): string {
+	const timestamps: string[] = [];
+
+	for (const pr of data.mergedPRs.values()) {
+		if (pr.meta.mergedAt) timestamps.push(pr.meta.mergedAt);
+		for (const t of pr.translations) {
+			timestamps.push(t.timestamp);
+		}
+	}
+
+	for (const pr of data.openPRs.values()) {
+		for (const t of pr.translations) {
+			timestamps.push(t.timestamp);
+		}
+	}
+
+	// Return the latest timestamp, or now if no data
+	timestamps.sort();
+	const latest = timestamps[timestamps.length - 1];
+	return latest ?? new Date().toISOString();
+}
+
+/**
+ * Generate the daily report content.
+ * Returns both the report content and the watermark timestamp for idempotent updates.
+ */
+async function generateReport(
+	date: string,
+	sinceTimestamp?: string,
+): Promise<{ content: string | null; watermark: string }> {
+	const log = reportLogger.child({
+		date,
+		mode: "pr-centric",
+		sinceTimestamp: sinceTimestamp ?? "none",
+	});
 
 	log.info("Generating PR-centric daily report");
 
-	const data = await getAllPRDataForDate(date);
+	const data = await getAllPRDataForDate(date, sinceTimestamp);
+
+	// Calculate watermark from data (before any early returns)
+	const watermark = getWatermark(data);
 
 	const hasMerged = data.mergedPRs.size > 0;
 	const hasOpen = data.openPRs.size > 0;
@@ -91,7 +137,7 @@ async function generateReport(date: string): Promise<string | null> {
 
 	if (!hasMerged && !hasOpen && !hasDirect && totalBlockers === 0) {
 		log.info("No PR activity to report for date");
-		return null; // Will fall back to legacy or show no activity
+		return { content: null, watermark }; // Will fall back to legacy or show no activity
 	}
 
 	log.debug(
@@ -191,7 +237,7 @@ async function generateReport(date: string): Promise<string | null> {
 		blockersSummary.length === 0
 	) {
 		log.info("No activity to report for date");
-		return formatNoActivityReport(date);
+		return { content: formatNoActivityReport(date), watermark };
 	}
 
 	// Group blockers by user for consolidated display
@@ -210,11 +256,12 @@ async function generateReport(date: string): Promise<string | null> {
 			featuresShipped: featureSummaries.length,
 			progressCount: progressSummaries.length,
 			blockerCount: blockersSummary.length,
+			watermark,
 		},
 		"PR-centric report generated",
 	);
 
-	return report;
+	return { content: report, watermark };
 }
 
 /**
@@ -229,14 +276,29 @@ async function processReportJob(
 	log.info("Processing report job");
 
 	try {
-		const content = await generateReport(date);
+		// Get last report timestamp (null = first run, defaults to today)
+		const lastReportTimestamp = await getLastReportTimestamp();
+		const sinceTimestamp = lastReportTimestamp ?? `${date}T00:00:00.000Z`;
+
+		log.info(
+			{ sinceTimestamp, isFirstRun: !lastReportTimestamp },
+			"Generating report since timestamp",
+		);
+
+		const { content, watermark } = await generateReport(date, sinceTimestamp);
 
 		if (!content) {
 			log.info("No content to report");
+			// Still update watermark on no-content to avoid re-querying same window
+			await setLastReportTimestamp(watermark);
 			return { sent: false };
 		}
 
 		await sendToDiscord(content);
+
+		// Store watermark after successful send (idempotent - same data = same watermark)
+		await setLastReportTimestamp(watermark);
+		log.info({ watermark }, "Report watermark updated");
 
 		return { sent: true };
 	} catch (error) {
@@ -314,4 +376,4 @@ export function createReportWorker(): Worker<ReportJob> {
 }
 
 // Export for manual triggering and testing
-export { generateReport, sendToDiscord };
+export { generateReport, getWatermark, sendToDiscord };
