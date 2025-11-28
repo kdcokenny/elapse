@@ -15,6 +15,7 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { getWatermark } from "../../src/core/watermark";
 import {
 	addPRToDay,
 	addPRTranslation,
@@ -24,7 +25,6 @@ import {
 	setLastReportTimestamp,
 	setPRStatus,
 } from "../../src/redis";
-import { getWatermark } from "../../src/reporter";
 import { initTestRedis, resetTestRedis, restoreRedis } from "../e2e/test-redis";
 
 describe("Since Last Report", () => {
