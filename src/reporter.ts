@@ -139,6 +139,7 @@ async function generateReport(
 			prNumber,
 			authors: pr.meta.authors,
 			commitCount: pr.translations.length,
+			repo: pr.meta.repo,
 		});
 	}
 
@@ -166,6 +167,7 @@ async function generateReport(
 					hasActivityToday: pr.hasActivityToday,
 					featureName,
 					impact,
+					repo: pr.meta.repo,
 				};
 			},
 		);
@@ -185,6 +187,7 @@ async function generateReport(
 					user: pr.meta.authors[0] ?? "unknown",
 					prNumber,
 					prTitle: pr.meta.title,
+					repo: pr.meta.repo,
 				});
 			}
 		}

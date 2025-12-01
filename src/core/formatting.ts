@@ -14,6 +14,7 @@ export interface FeatureSummary {
 	prNumber: number; // For traceability
 	authors: string[]; // Contributors
 	commitCount: number;
+	repo: string; // Repository in "owner/repo" format for PR links
 }
 
 export interface BranchSummary {
@@ -28,6 +29,8 @@ export interface BranchSummary {
 	featureName?: string;
 	/** AI-generated business impact (e.g., "Enhanced login security") */
 	impact?: string;
+	/** Repository in "owner/repo" format for PR links */
+	repo?: string;
 }
 
 export interface ActivityStats {
@@ -35,6 +38,13 @@ export interface ActivityStats {
 	branchesActive: number;
 	totalCommits: number;
 	blockerCount: number;
+}
+
+/**
+ * Build a GitHub PR URL from repo and PR number.
+ */
+function buildPRUrl(repo: string, prNumber: number): string {
+	return `https://github.com/${repo}/pull/${prNumber}`;
 }
 
 /**
@@ -73,7 +83,10 @@ export function formatFeatureCentricReport(
 				report += `  → ${b.description}\n`;
 				const context = b.prTitle || b.branch;
 				if (b.prNumber) {
-					report += `    PR #${b.prNumber}: ${context}\n`;
+					const prLink = b.repo
+						? `[PR #${b.prNumber}](${buildPRUrl(b.repo, b.prNumber)})`
+						: `PR #${b.prNumber}`;
+					report += `    ${prLink}: ${context}\n`;
 				} else {
 					report += `    ${context}\n`;
 				}
@@ -87,9 +100,10 @@ export function formatFeatureCentricReport(
 		report += `🚢 **SHIPPED TODAY**\n\n`;
 		for (const f of shipped) {
 			const authors = f.authors.join(", ");
+			const prLink = `[PR #${f.prNumber}](${buildPRUrl(f.repo, f.prNumber)})`;
 			report += `• ${f.featureName}\n`;
 			report += `  → ${f.impact}\n`;
-			report += `  → PR #${f.prNumber} (${authors})\n`;
+			report += `  → ${prLink} (${authors})\n`;
 			report += `\n`;
 		}
 	}
@@ -113,7 +127,10 @@ export function formatFeatureCentricReport(
 				p.hasActivityToday === false ? " • awaiting review" : "";
 			// Compact format: users and PR on single line
 			if (p.prNumber) {
-				report += `  → ${users} • PR #${p.prNumber}${activityIndicator}\n`;
+				const prLink = p.repo
+					? `[PR #${p.prNumber}](${buildPRUrl(p.repo, p.prNumber)})`
+					: `PR #${p.prNumber}`;
+				report += `  → ${users} • ${prLink}${activityIndicator}\n`;
 			} else {
 				report += `  → ${users}${activityIndicator}\n`;
 			}

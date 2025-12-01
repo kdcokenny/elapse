@@ -31,6 +31,8 @@ export interface BlockerSummary {
 	user: string;
 	prNumber?: number;
 	prTitle?: string;
+	/** Repository in "owner/repo" format for PR links */
+	repo?: string;
 }
 
 /**
@@ -44,6 +46,8 @@ export interface UserBlockerGroup {
 		branch: string;
 		prNumber?: number;
 		prTitle?: string;
+		/** Repository in "owner/repo" format for PR links */
+		repo?: string;
 	}>;
 }
 
@@ -105,6 +109,7 @@ export function groupBlockersByUser(
 			branch: b.branch,
 			prNumber: b.prNumber,
 			prTitle: b.prTitle,
+			repo: b.repo,
 		});
 	}
 
