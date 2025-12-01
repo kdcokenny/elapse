@@ -8,11 +8,18 @@ import {
 } from "bun:test";
 import type { PRBlocker } from "../../src/core/blockers";
 import {
-	getActivePersistentBlockers,
+	getRedis,
 	resolveReviewBlocker,
 	storeReviewBlocker,
 } from "../../src/redis";
 import { initTestRedis, resetTestRedis, restoreRedis } from "../e2e/test-redis";
+
+// Helper to get all blockers from the persistent blockers hash
+async function getActivePersistentBlockers(): Promise<PRBlocker[]> {
+	const client = getRedis();
+	const raw = await client.hgetall("elapse:blockers:active");
+	return Object.values(raw).map((r) => JSON.parse(r) as PRBlocker);
+}
 
 describe("Review Blocker Storage", () => {
 	beforeAll(() => {

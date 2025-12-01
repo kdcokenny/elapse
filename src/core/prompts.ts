@@ -28,7 +28,7 @@ export function truncateDiff(diff: string): {
 /**
  * Build the system prompt for the translator (diff → structured summary).
  */
-export function buildTranslatorSystemPrompt(projectContext?: string): string {
+function buildTranslatorSystemPrompt(projectContext?: string): string {
 	const context = projectContext || "a software project";
 
 	return `You are a technical writer who translates git commits into structured summaries for stakeholders.
@@ -56,10 +56,7 @@ Examples:
 /**
  * Build the user prompt for the translator.
  */
-export function buildTranslatorUserPrompt(
-	message: string,
-	diff: string,
-): string {
+function buildTranslatorUserPrompt(message: string, diff: string): string {
 	const { truncated, wasTruncated } = truncateDiff(diff);
 	const isVague = isVagueMessage(message);
 
@@ -98,7 +95,7 @@ export function buildTranslatorPrompt(
 /**
  * Build the system prompt for comment blocker analysis.
  */
-export function buildCommentAnalysisSystemPrompt(): string {
+function buildCommentAnalysisSystemPrompt(): string {
 	return `You analyze PR comments to determine if they indicate a blocker or resolve one.
 
 A BLOCKER is something preventing the PR from being merged or work from progressing:
@@ -124,7 +121,7 @@ Important:
 /**
  * Build the user prompt for comment blocker analysis.
  */
-export function buildCommentAnalysisUserPrompt(
+function buildCommentAnalysisUserPrompt(
 	prTitle: string,
 	prNumber: number,
 	commentBody: string,
@@ -157,9 +154,7 @@ export function buildCommentAnalysisPrompt(
  * Build the system prompt for feature-level narration.
  * Converts PR translations into a human-readable feature name and impact.
  */
-export function buildFeatureNarratorSystemPrompt(
-	projectContext?: string,
-): string {
+function buildFeatureNarratorSystemPrompt(projectContext?: string): string {
 	const context = projectContext || "a software project";
 
 	return `You are a technical writer creating feature summaries for stakeholders.
@@ -185,7 +180,7 @@ Examples:
 /**
  * Build the user prompt for feature-level narration.
  */
-export function buildFeatureNarratorUserPrompt(
+function buildFeatureNarratorUserPrompt(
 	prTitle: string,
 	prNumber: number,
 	translations: string[],

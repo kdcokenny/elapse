@@ -1,0 +1,15 @@
+{
+	"repos": [{ "owner": "excalidraw", "repo": "excalidraw" }],
+	"dateRange": {
+		"start": "2025-11-25",
+		"end": "2025-11-29"
+	},
+	"maxCommitsPerRepo": 20,
+	"maxDiffSize": 100000,
+	"rateLimitDelayMs": 200,
+	"prCollection": {
+		"enabled": true,
+		"maxCommentsPerPR": 10,
+		"maxReviewsPerPR": 10
+	}
+}

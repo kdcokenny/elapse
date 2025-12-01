@@ -128,6 +128,10 @@ Elapse automatically filters out noise:
 - **Merge commits:** `Merge branch...`, `Merge pull request...`
 - **Vague messages:** `fix`, `wip`, `update` (AI relies on diff instead)
 
+## Known Limitations
+
+- **Pre-existing PRs:** Pull requests that were already open when you install Elapse will be tracked once they receive new commits. Full context (PR numbers, blockers) becomes complete within 1-2 weeks of normal development activity.
+
 ## License
 
 MIT

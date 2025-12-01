@@ -10,11 +10,14 @@ import { extractBranchFromRef } from "./core/branches";
 import { type Commit, filterCommits, type Sender } from "./core/filters";
 import { webhookLogger } from "./logger";
 import {
+	clearBranchPR,
 	closePR,
 	createOrUpdatePR,
+	getBranchPR,
 	removePRBlocker,
 	resolveBlockersForPR,
 	resolveReviewBlocker,
+	setBranchPR,
 	setPRBlocker,
 	storeReviewBlocker,
 } from "./redis";
@@ -56,7 +59,7 @@ function extractPrNumber(message: string): number | undefined {
 	return undefined;
 }
 
-export const JOB_OPTIONS = {
+const JOB_OPTIONS = {
 	attempts: 5,
 	backoff: {
 		type: "exponential" as const,
@@ -134,7 +137,13 @@ export function createWebhookApp(queue: Queue) {
 				// Add jobs for each included commit
 				const timestamp = new Date().toISOString();
 
+				// Look up PR number from branch index (set when PR is opened)
+				const branchPRNumber = await getBranchPR(repo, branch);
+
 				for (const commit of included) {
+					// Try commit message first (for squash merges), then branch index
+					const prNumber = extractPrNumber(commit.message) ?? branchPRNumber;
+
 					const jobData: DigestJob = {
 						repo,
 						user: commit.author.username ?? commit.author.name ?? sender.login,
@@ -143,7 +152,7 @@ export function createWebhookApp(queue: Queue) {
 						installationId,
 						timestamp,
 						branch,
-						prNumber: extractPrNumber(commit.message),
+						prNumber,
 					};
 
 					await queue.add("digest", jobData, JOB_OPTIONS);
@@ -190,6 +199,9 @@ export function createWebhookApp(queue: Queue) {
 					status: "open",
 					openedAt: new Date().toISOString(),
 				});
+
+				// Index branch -> PR for push event association
+				await setBranchPR(repo, branch, prNumber);
 
 				log.info({ repo, prNumber, branch }, "PR opened, metadata stored");
 			} catch (error) {
@@ -277,9 +289,13 @@ export function createWebhookApp(queue: Queue) {
 				const repo = payload.repository.full_name;
 				const prNumber = payload.pull_request.number;
 				const merged = payload.pull_request.merged;
+				const branch = payload.pull_request.head.ref;
 
 				// Close PR in PR-centric storage (sets status, applies TTL, cleans up blockers if not merged)
 				await closePR(prNumber, merged);
+
+				// Clear branch-to-PR index (branch is now free for new PRs)
+				await clearBranchPR(repo, branch);
 
 				// Also resolve blockers in legacy storage for backwards compatibility
 				const removed = await resolveBlockersForPR(repo, prNumber);

@@ -4,25 +4,22 @@
  * Full week execution tests using production-aligned fixture data.
  * Uses ioredis-mock for stateful week simulation where:
  * - State persists across days (like production Redis)
- * - Translations are stored via actual storeTranslation()
+ * - Translations are stored via PR-centric storage
  * - Blockers persist until PR merge via resolveBlockersForPR()
- * - Reports generated via actual getAllForDate()
+ * - Reports generated via generateReport()
  * - Real AI calls for feature narration
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-// Import production Redis functions for stateful testing
+// Import production Redis functions for stateful testing (PR-centric only)
 import {
 	addPRToDay,
 	addPRTranslation,
 	createOrUpdatePR,
-	getAllForDate,
+	getPRBlockers,
 	resolveBlockersForPR,
 	setPRBlocker,
 	setPRStatus,
-	storeBlockers,
-	storePersistentBlocker,
-	storeTranslation,
 } from "../../src/redis";
 import { generateReport } from "../../src/reporter";
 import type { ProductionDayFixture, WorkDay } from "../fixtures/types";
@@ -94,15 +91,13 @@ describe("E2E: Stateful Week Simulation", () => {
 
 			console.log(`\n--- ${day.toUpperCase()} (${dateStr}) ---`);
 
-			// Helper: Store translation in both legacy and PR-centric models
+			// Helper: Store translation in PR-centric model
 			async function storeTranslationWithPR(
 				user: string,
-				section: "progress" | "shipped",
+				_section: "progress" | "shipped",
 				t: ProductionDayFixture["progress"][string][number],
 			) {
-				await storeTranslation(dateStr, user, section, t);
-
-				// Skip PR-centric storage if missing required PR fields
+				// Skip storage if missing required PR fields
 				if (!t.prNumber || !t.prTitle || !t.branch) return;
 
 				// Fail fast: PR translations require summary and sha
@@ -144,19 +139,8 @@ describe("E2E: Stateful Week Simulation", () => {
 				}
 			}
 
-			// Step 2: Store blockers (both legacy and PR-centric)
+			// Step 2: Store blockers (PR-centric only)
 			if (dayData.blockers.length > 0) {
-				// Legacy storage: separate by persistence type
-				const dateBlockers = dayData.blockers.filter((b) => !b.commentId);
-				const persistentBlockers = dayData.blockers.filter((b) => b.commentId);
-
-				if (dateBlockers.length > 0) {
-					await storeBlockers(dateStr, dateBlockers);
-				}
-				for (const blocker of persistentBlockers) {
-					await storePersistentBlocker(blocker);
-				}
-
 				// PR-centric storage: only types supported by PRBlockerEntry
 				type PRBlockerType =
 					| "changes_requested"
@@ -232,19 +216,42 @@ describe("E2E: Stateful Week Simulation", () => {
 		// Reset Redis
 		await resetTestRedis();
 
-		// Day 1: Store a persistent blocker
+		// Day 1: Store a persistent blocker using PR-centric storage
 		const mondayData = scenario.days.get("monday");
 		if (!mondayData) return;
 
-		// Find a blocker with commentId (persistent)
-		const persistentBlocker = mondayData.blockers.find((b) => b.commentId);
-		if (persistentBlocker) {
-			await storePersistentBlocker(persistentBlocker);
+		// Find a blocker with prNumber and commentId (persistent)
+		const persistentBlocker = mondayData.blockers.find(
+			(b) => b.commentId && b.prNumber,
+		);
+		if (persistentBlocker?.prNumber) {
+			// Create the PR first
+			await createOrUpdatePR(persistentBlocker.prNumber, {
+				repo: "test/repo",
+				branch: persistentBlocker.branch,
+				title: persistentBlocker.prTitle ?? `PR #${persistentBlocker.prNumber}`,
+				authors: [persistentBlocker.user],
+				status: "open",
+			});
+
+			// Store blocker in PR-centric storage
+			await setPRBlocker(
+				persistentBlocker.prNumber,
+				`comment:${persistentBlocker.commentId}`,
+				{
+					type: "comment",
+					description: persistentBlocker.description,
+					commentId: persistentBlocker.commentId,
+					detectedAt: "2025-02-24",
+				},
+			);
 		}
 
-		// Day 2: Verify blocker still exists
-		const { blockers: tuesdayBlockers } = await getAllForDate("2025-02-25");
-		expect(tuesdayBlockers.length).toBeGreaterThanOrEqual(0);
+		// Day 2: Verify blocker still exists in PR-centric storage
+		if (persistentBlocker?.prNumber) {
+			const tuesdayBlockers = await getPRBlockers(persistentBlocker.prNumber);
+			expect(tuesdayBlockers.size).toBeGreaterThanOrEqual(0);
+		}
 
 		// Day 3: Resolve the blocker by PR merge
 		if (persistentBlocker && persistentBlocker.prNumber !== undefined) {

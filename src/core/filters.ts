@@ -108,23 +108,6 @@ export function isVagueMessage(message: string): boolean {
 }
 
 /**
- * Main filter function - determines if a commit should be processed.
- * Returns true if the commit should be processed, false if it should be skipped.
- */
-export function shouldProcessCommit(commit: Commit, sender: Sender): boolean {
-	// Skip bot commits
-	if (isBotCommit(commit, sender)) return false;
-
-	// Skip merge commits
-	if (isMergeCommit(commit)) return false;
-
-	// Skip lockfile-only commits
-	if (isLockfileOnlyCommit(commit)) return false;
-
-	return true;
-}
-
-/**
  * Filter an array of commits, returning only those that should be processed.
  */
 export function filterCommits(

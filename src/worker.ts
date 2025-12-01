@@ -18,10 +18,7 @@ import {
 	getPRBlockers,
 	redis,
 	removePRBlocker,
-	resolveBlockersForPR,
 	setPRBlocker,
-	storePersistentBlocker,
-	storeTranslation,
 } from "./redis";
 import type { CommentJob, DigestJob } from "./webhook";
 
@@ -179,29 +176,9 @@ async function processDigestJob(
 
 			// Add PR to daily index
 			await addPRToDay(date, prNumber);
-
-			// Also store in legacy format for backwards compatibility during migration
-			await storeTranslation(date, user, section, {
-				summary,
-				category: result.category,
-				significance: result.significance,
-				branch,
-				prNumber,
-				prTitle,
-				sha,
-			});
 		} else {
 			// Direct commit (no PR) - store in direct commits bucket
 			await addDirectCommit(date, {
-				summary,
-				category: result.category,
-				significance: result.significance,
-				branch,
-				sha,
-			});
-
-			// Also store in legacy format for backwards compatibility
-			await storeTranslation(date, user, section, {
 				summary,
 				category: result.category,
 				significance: result.significance,
@@ -245,8 +222,7 @@ async function processDigestJob(
 async function processCommentJob(
 	job: Job<CommentJob>,
 ): Promise<{ action: string }> {
-	const { repo, prNumber, prTitle, branch, commentId, commentBody, author } =
-		job.data;
+	const { repo, prNumber, prTitle, commentId, commentBody, author } = job.data;
 
 	const log = workerLogger.child({
 		jobId: job.id,
@@ -274,17 +250,6 @@ async function processCommentJob(
 				detectedAt: new Date().toISOString(),
 			});
 
-			// Also store in legacy persistent blockers for backwards compatibility
-			await storePersistentBlocker({
-				type: "comment",
-				description: result.description,
-				branch,
-				user: author,
-				prNumber,
-				commentId,
-				detectedAt: new Date().toISOString(),
-			});
-
 			log.info(
 				{ description: result.description },
 				"Blocker detected from comment",
@@ -296,10 +261,8 @@ async function processCommentJob(
 				await removePRBlocker(prNumber, key);
 			}
 
-			// Also resolve in legacy storage
-			const removed = await resolveBlockersForPR(repo, prNumber);
 			log.info(
-				{ removed, prBlockersRemoved: blockers.size },
+				{ prBlockersRemoved: blockers.size },
 				"Blockers resolved from comment",
 			);
 		} else {

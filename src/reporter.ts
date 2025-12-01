@@ -349,5 +349,5 @@ export function createReportWorker(): Worker<ReportJob> {
 	return worker;
 }
 
-// Export for manual triggering and testing
-export { generateReport, getWatermark, sendToDiscord };
+// Export for testing
+export { generateReport };

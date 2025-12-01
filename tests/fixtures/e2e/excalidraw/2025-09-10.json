@@ -1,0 +1,56 @@
+{
+	"date": "2025-09-10",
+	"commits": [
+		{
+			"sha": "414182f5997be12646f2fe9881f62e277fc4627e",
+			"message": "fix: normalize file on paste/drop (#9959)",
+			"user": "dwelle",
+			"timestamp": "2025-09-10T15:59:02Z",
+			"author": {
+				"name": "David Luzar",
+				"email": "5153846+dwelle@users.noreply.github.com",
+				"username": "dwelle"
+			},
+			"files": {
+				"added": [],
+				"modified": ["packages/excalidraw/clipboard.ts"],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/excalidraw/clipboard.ts b/packages/excalidraw/clipboard.ts\nindex 9eb101422390..007a02161b3e 100644\n--- a/packages/excalidraw/clipboard.ts\n+++ b/packages/excalidraw/clipboard.ts\n@@ -30,6 +30,7 @@ import {\n   createFile,\n   getFileHandle,\n   isSupportedImageFileType,\n+  normalizeFile,\n } from \"./data/blob\";\n \n import { tryParseSpreadsheet, VALID_SPREADSHEET } from \"./charts\";\n@@ -472,7 +473,12 @@ export const parseDataTransferEvent = async (\n             const file = item.getAsFile();\n             if (file) {\n               const fileHandle = await getFileHandle(item);\n-              return { type: file.type, kind: \"file\", file, fileHandle };\n+              return {\n+                type: file.type,\n+                kind: \"file\",\n+                file: await normalizeFile(file),\n+                fileHandle,\n+              };\n             }\n           } else if (item.kind === \"string\") {\n             const { type } = item;\n",
+			"diffSize": 956,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 9959,
+				"title": "fix: normalize file on paste/drop",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "dwelle/fix-file-normalization-on-clipboard",
+				"baseBranch": "master",
+				"author": "dwelle",
+				"body": "fixes mime type detection. Regression from https://github.com/excalidraw/excalidraw/pull/9947",
+				"labels": [],
+				"requestedReviewers": [],
+				"reviews": [],
+				"comments": [
+					{
+						"id": 3275388514,
+						"body": "[vc]: #l7a22s5vaNd4YqtXo1io0yGU89evWiGt9BCvzViWVTM=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJleGNhbGlkcmF3Iiwicm9vdERpcmVjdG9yeSI6bnVsbCwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2V4Y2FsaWRyYXcvZXhjYWxpZHJhdy9Fd0pib0Q2dXl2NlRYN3FQV05qdVlvaTlXYkZ5IiwicHJldmlld1VybCI6ImV4Y2FsaWRyYXctZ2l0LWR3ZWxsZS1maXgtZmlsZS1ub3JtYWxpemF0aW9uLTdlYjAyNC1leGNhbGlkcmF3LnZlcmNlbC5hcHAiLCJuZXh0Q29tbWl0U3RhdHVzIjoiREVQTE9ZRUQifSx7Im5hbWUiOiJleGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZSIsInJvb3REaXJlY3RvcnkiOiJleGFtcGxlcy93aXRoLXNjcmlwdC1pbi1icm93c2VyIiwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2V4Y2FsaWRyYXcvZXhjYWxpZHJhdy1wYWNrYWdlLWV4YW1wbGUvR25YM0xzS2pMenl4WEtZWWkxSlZvYzdzNmtWayIsInByZXZpZXdVcmwiOiJleGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZS1naXQtZHdlbGxlLWZpeC1maWwtMmMyZjA2LWV4Y2FsaWRyYXcudmVyY2VsLmFwcCIsIm5leHRDb21taXRTdGF0dXMiOiJERVBMT1lFRCJ9LHsibmFtZSI6ImRvY3MiLCJyb290RGlyZWN0b3J5IjoiZGV2LWRvY3MiLCJpbnNwZWN0b3JVcmwiOiJodHRwczovL3ZlcmNlbC5jb20vZXhjYWxpZHJhdy9kb2NzLzZHVlhlZFlGa2hieXVhUXVueEtpbkMzd1gyRnUiLCJuZXh0Q29tbWl0U3RhdHVzIjoiSUdOT1JFRCJ9LHsibmFtZSI6ImV4Y2FsaWRyYXctcGFja2FnZS1leGFtcGxlLXdpdGgtbmV4dGpzIiwicm9vdERpcmVjdG9yeSI6ImV4YW1wbGVzL3dpdGgtbmV4dGpzIiwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2V4Y2FsaWRyYXcvZXhjYWxpZHJhdy1wYWNrYWdlLWV4YW1wbGUtd2l0aC1uZXh0anMvQXozZlJOWDYzU1dhOEVKdjVyd0xrY1lSN3hwbyIsInByZXZpZXdVcmwiOiJleGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZS13aXRoLW5leHRqcy1naXQtZHctMjU0ZjczLWV4Y2FsaWRyYXcudmVyY2VsLmFwcCIsIm5leHRDb21taXRTdGF0dXMiOiJERVBMT1lFRCJ9XX0=\nThe latest updates on your projects. Learn more about [Vercel for GitHub](https://vercel.link/github-learn-more).\n\n| Project | Deployment | Preview | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n| [excalidraw](https://vercel.com/excalidraw/excalidraw) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw/EwJboD6uyv6TX7qPWNjuYoi9WbFy) | [Preview](https://excalidraw-git-dwelle-fix-file-normalization-7eb024-excalidraw.vercel.app) | Sep 10, 2025 3:07pm |\n| [excalidraw-package-example](https://vercel.com/excalidraw/excalidraw-package-example) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw-package-example/GnX3LsKjLzyxXKYYi1JVoc7s6kVk) | [Preview](https://excalidraw-package-example-git-dwelle-fix-fil-2c2f06-excalidraw.vercel.app) | Sep 10, 2025 3:07pm |\n| [excalidraw-package-example-with-nextjs](https://vercel.com/excalidraw/excalidraw-package-example-with-nextjs) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw-package-example-with-nextjs/Az3fRNX63SWa8EJv5rwLkcYR7xpo) | [Preview](https://excalidraw-package-example-with-nextjs-git-dw-254f73-excalidraw.vercel.app) | Sep 10, 2025 3:07pm |\n\n<details><summary>1 Skipped Deployment</summary>\n\n| Project | Deployment | Preview | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n| [docs](https://vercel.com/excalidraw/docs) | ![Ignored](https://vercel.com/static/status/canceled.svg) [Ignored](https://vercel.com/excalidraw/docs/6GVXedYFkhbyuaQunxKinC3wX2Fu) |  | Sep 10, 2025 3:07pm |\n</details>\n\n\n\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2025-09-10T15:05:13Z"
+					},
+					{
+						"id": 3275401117,
+						"body": "<h2>Coverage Report</h2>\n<table> <thead> <tr> <th align=\"center\">Status</th> <th align=\"left\">Category</th> <th align=\"right\">Percentage</th> <th align=\"right\">Covered / Total</th> </tr> </thead> <tbody> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Lines</td> <td align=\"right\">67.16% (🎯 60%)</td> <td align=\"right\">74132 / 110366</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Statements</td> <td align=\"right\">67.16% (🎯 60%)</td> <td align=\"right\">74132 / 110366</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Functions</td> <td align=\"right\">64.49% (🎯 63%)</td> <td align=\"right\">2051 / 3180</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Branches</td> <td align=\"right\">80.37% (🎯 70%)</td> <td align=\"right\">9151 / 11385</td> </tr> </tbody> </table><details><summary>File Coverage</summary><table> <thead> <tr> <th align=\"left\">File</th> <th align=\"right\">Stmts</th> <th align=\"right\">Branches</th> <th align=\"right\">Functions</th> <th align=\"right\">Lines</th> <th align=\"left\">Uncovered Lines</th> </tr> </thead> <tbody> <tr> <td align=\"left\" colspan=\"6\"><b>Changed Files</b></td> </tr> <tr> <td align=\"left\"><a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts\">packages/excalidraw/clipboard.ts</a></td> <td align=\"right\">66.56%</td> <td align=\"right\">78.35%</td> <td align=\"right\">73.68%</td> <td align=\"right\">66.56%</td> <td align=\"left\"><a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L76-L78\" class=\"text-red\">76-78</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L104-L105\" class=\"text-red\">104-105</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L114-L118\" class=\"text-red\">114-118</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L122-L123\" class=\"text-red\">122-123</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L125-L126\" class=\"text-red\">125-126</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L137-L140\" class=\"text-red\">137-140</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L142-L143\" class=\"text-red\">142-143</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L165-L169\" class=\"text-red\">165-169</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L174-L177\" class=\"text-red\">174-177</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L187-L192\" class=\"text-red\">187-192</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L203-L212\" class=\"text-red\">203-212</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L259-L263\" class=\"text-red\">259-263</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L270-L338\" class=\"text-red\">270-338</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L374-L375\" class=\"text-red\">374-375</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L495-L496\" class=\"text-red\">495-496</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L537-L538\" class=\"text-red\">537-538</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L560-L587\" class=\"text-red\">560-587</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L590-L622\" class=\"text-red\">590-622</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/80a9ad05d596862d7517d0f5fcb458549206b658/packages/excalidraw/clipboard.ts#L626-L665\" class=\"text-red\">626-665</a></td> </tr> </tbody> </table></details>\n<em>Generated in workflow <a href=https://github.com/excalidraw/excalidraw/actions/runs/17618089139>#5768</a> for commit <a href=\"https://github.com/excalidraw/excalidraw/commit/80a9ad05d596862d7517d0f5fcb458549206b658\">80a9ad0</a> by the <a href=\"https://github.com/davelosert/vitest-coverage-report-action\">Vitest Coverage Report Action</a></em>\n\n<!-- vitest-coverage-report-marker-root -->",
+						"author": "github-actions[bot]",
+						"createdAt": "2025-09-10T15:08:40Z"
+					}
+				],
+				"htmlUrl": "https://github.com/excalidraw/excalidraw/pull/9959"
+			}
+		}
+	]
+}

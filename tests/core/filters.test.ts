@@ -7,7 +7,6 @@ import {
 	isMergeCommit,
 	isVagueMessage,
 	type Sender,
-	shouldProcessCommit,
 } from "../../src/core/filters";
 
 const makeCommit = (overrides: Partial<Commit> = {}): Commit => ({
@@ -163,32 +162,6 @@ describe("isVagueMessage", () => {
 		["wip: authentication flow", false],
 	])('"%s" is not vague', (message) => {
 		expect(isVagueMessage(message)).toBe(false);
-	});
-});
-
-describe("shouldProcessCommit", () => {
-	test("processes normal commits", () => {
-		const commit = makeCommit();
-		const sender = makeSender();
-		expect(shouldProcessCommit(commit, sender)).toBe(true);
-	});
-
-	test("skips bot commits", () => {
-		const commit = makeCommit();
-		const sender = makeSender({ type: "Bot" });
-		expect(shouldProcessCommit(commit, sender)).toBe(false);
-	});
-
-	test("skips merge commits", () => {
-		const commit = makeCommit({ message: "Merge branch 'main'" });
-		const sender = makeSender();
-		expect(shouldProcessCommit(commit, sender)).toBe(false);
-	});
-
-	test("skips lockfile-only commits", () => {
-		const commit = makeCommit({ modified: ["package-lock.json"] });
-		const sender = makeSender();
-		expect(shouldProcessCommit(commit, sender)).toBe(false);
 	});
 });
 

@@ -166,7 +166,7 @@ export function formatFeatureCentricReport(
 /**
  * Format a date string (YYYY-MM-DD) to a readable format.
  */
-export function formatDate(date: string): string {
+function formatDate(date: string): string {
 	const d = new Date(`${date}T00:00:00`);
 	return d.toLocaleDateString("en-US", {
 		weekday: "long",

@@ -1,0 +1,68 @@
+{
+	"date": "2025-09-15",
+	"commits": [
+		{
+			"sha": "ac0d3059dc71a05d266b0c89715828fa5a2d9532",
+			"message": "fix: Use the right polygon enclosure test (#9979)",
+			"user": "mtolmacs",
+			"timestamp": "2025-09-15T08:07:37Z",
+			"author": {
+				"name": "Márk Tolmács",
+				"email": "mark@lazycat.hu",
+				"username": "mtolmacs"
+			},
+			"files": {
+				"added": [],
+				"modified": ["packages/excalidraw/eraser/index.ts"],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/excalidraw/eraser/index.ts b/packages/excalidraw/eraser/index.ts\nindex 567d0a396e0d..8d09b1aafc97 100644\n--- a/packages/excalidraw/eraser/index.ts\n+++ b/packages/excalidraw/eraser/index.ts\n@@ -19,7 +19,7 @@ import {\n   lineSegmentsDistance,\n   pointFrom,\n   polygon,\n-  polygonIncludesPoint,\n+  polygonIncludesPointNonZero,\n } from \"@excalidraw/math\";\n \n import { getElementsInGroup } from \"@excalidraw/element\";\n@@ -260,7 +260,7 @@ const eraserTest = (\n     // PERF: Check only one point of the eraser segment. If the eraser segment\n     // start is inside the closed freedraw shape, the other point is either also\n     // inside or the eraser segment will intersect the shape outline anyway\n-    if (polygonIncludesPoint(pathSegment[0], poly)) {\n+    if (polygonIncludesPointNonZero(pathSegment[0], poly)) {\n       return true;\n     }\n \n",
+			"diffSize": 861,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 9979,
+				"title": "fix: Use the right polygon enclosure test",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "mtolmacs/fix/eraser-dot-internal-test",
+				"baseBranch": "master",
+				"author": "mtolmacs",
+				"body": "Use `polygonIncludesPointNonZero()` in the eraser test (just like lasso does) to handle a limited edge case where the eraser is clicked (not moved) inside the outline of a freedraw.",
+				"labels": [],
+				"requestedReviewers": [],
+				"reviews": [
+					{
+						"id": 3223365433,
+						"state": "APPROVED",
+						"author": "dwelle"
+					}
+				],
+				"comments": [
+					{
+						"id": 3290719416,
+						"body": "[vc]: #cQ9IVco8qd4Pkya37Inq/Msy9aDIqcOK0ZBbk/t8hgI=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJleGNhbGlkcmF3Iiwicm9vdERpcmVjdG9yeSI6bnVsbCwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2V4Y2FsaWRyYXcvZXhjYWxpZHJhdy84RlFpZ0U1Y0piS2VxQmlFRHphRXJ0Q2ttanZ2IiwicHJldmlld1VybCI6ImV4Y2FsaWRyYXctZ2l0LW10b2xtYWNzLWZpeGVyYXNlci1kb3QtaW50ZXJuYWwtdGVzdC1leGNhbGlkcmF3LnZlcmNlbC5hcHAiLCJuZXh0Q29tbWl0U3RhdHVzIjoiREVQTE9ZRUQifSx7Im5hbWUiOiJleGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZSIsInJvb3REaXJlY3RvcnkiOiJleGFtcGxlcy93aXRoLXNjcmlwdC1pbi1icm93c2VyIiwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2V4Y2FsaWRyYXcvZXhjYWxpZHJhdy1wYWNrYWdlLWV4YW1wbGUvREh5MzNVSktwRGFTcGJOeXQzRnRtVjNaUkZIQyIsInByZXZpZXdVcmwiOiJleGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZS1naXQtbXRvbG1hY3MtZml4ZXItNTBiZjJjLWV4Y2FsaWRyYXcudmVyY2VsLmFwcCIsIm5leHRDb21taXRTdGF0dXMiOiJERVBMT1lFRCJ9LHsibmFtZSI6ImRvY3MiLCJyb290RGlyZWN0b3J5IjoiZGV2LWRvY3MiLCJpbnNwZWN0b3JVcmwiOiJodHRwczovL3ZlcmNlbC5jb20vZXhjYWxpZHJhdy9kb2NzLzduOWs4QWhEN2FmWW95S0RxZ3NmM21kR2tBVE0iLCJwcmV2aWV3VXJsIjoiZG9jcy1naXQtbXRvbG1hY3MtZml4ZXJhc2VyLWRvdC1pbnRlcm5hbC10ZXN0LWV4Y2FsaWRyYXcudmVyY2VsLmFwcCIsIm5leHRDb21taXRTdGF0dXMiOiJJR05PUkVEIn0seyJuYW1lIjoiZXhjYWxpZHJhdy1wYWNrYWdlLWV4YW1wbGUtd2l0aC1uZXh0anMiLCJyb290RGlyZWN0b3J5IjoiZXhhbXBsZXMvd2l0aC1uZXh0anMiLCJpbnNwZWN0b3JVcmwiOiJodHRwczovL3ZlcmNlbC5jb20vZXhjYWxpZHJhdy9leGNhbGlkcmF3LXBhY2thZ2UtZXhhbXBsZS13aXRoLW5leHRqcy85cmdpNHluaHhCeTNTcTROenJtc25ja2Rmb201IiwicHJldmlld1VybCI6ImV4Y2FsaWRyYXctcGFja2FnZS1leGFtcGxlLXdpdGgtbmV4dGpzLWdpdC1tdC04NTliMzQtZXhjYWxpZHJhdy52ZXJjZWwuYXBwIiwibmV4dENvbW1pdFN0YXR1cyI6IkRFUExPWUVEIn1dfQ==\nThe latest updates on your projects. Learn more about [Vercel for GitHub](https://vercel.link/github-learn-more).\n\n| Project | Deployment | Preview | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n| [excalidraw](https://vercel.com/excalidraw/excalidraw) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw/8FQigE5cJbKeqBiEDzaErtCkmjvv) | [Preview](https://excalidraw-git-mtolmacs-fixeraser-dot-internal-test-excalidraw.vercel.app) | Sep 15, 2025 6:52am |\n| [excalidraw-package-example](https://vercel.com/excalidraw/excalidraw-package-example) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw-package-example/DHy33UJKpDaSpbNyt3FtmV3ZRFHC) | [Preview](https://excalidraw-package-example-git-mtolmacs-fixer-50bf2c-excalidraw.vercel.app) | Sep 15, 2025 6:52am |\n| [excalidraw-package-example-with-nextjs](https://vercel.com/excalidraw/excalidraw-package-example-with-nextjs) | ![Ready](https://vercel.com/static/status/ready.svg) [Ready](https://vercel.com/excalidraw/excalidraw-package-example-with-nextjs/9rgi4ynhxBy3Sq4Nzrmsnckdfom5) | [Preview](https://excalidraw-package-example-with-nextjs-git-mt-859b34-excalidraw.vercel.app) | Sep 15, 2025 6:52am |\n\n<details><summary>1 Skipped Deployment</summary>\n\n| Project | Deployment | Preview | Updated (UTC) |\n| :--- | :----- | :------ | :------ |\n| [docs](https://vercel.com/excalidraw/docs) | ![Ignored](https://vercel.com/static/status/canceled.svg) [Ignored](https://vercel.com/excalidraw/docs/7n9k8AhD7afYoyKDqgsf3mdGkATM) | [Preview](https://docs-git-mtolmacs-fixeraser-dot-internal-test-excalidraw.vercel.app) | Sep 15, 2025 6:52am |\n</details>\n\n\n\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2025-09-15T06:49:59Z"
+					},
+					{
+						"id": 3290723682,
+						"body": "@cTangonan123 here's the PR for the fix.",
+						"author": "mtolmacs",
+						"createdAt": "2025-09-15T06:51:43Z"
+					},
+					{
+						"id": 3290729022,
+						"body": "<h2>Coverage Report</h2>\n<table> <thead> <tr> <th align=\"center\">Status</th> <th align=\"left\">Category</th> <th align=\"right\">Percentage</th> <th align=\"right\">Covered / Total</th> </tr> </thead> <tbody> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Lines</td> <td align=\"right\">66.79% (🎯 60%)</td> <td align=\"right\">74558 / 111624</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Statements</td> <td align=\"right\">66.79% (🎯 60%)</td> <td align=\"right\">74558 / 111624</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Functions</td> <td align=\"right\">64.27% (🎯 63%)</td> <td align=\"right\">2055 / 3197</td> </tr> <tr> <td align=\"center\">🟢</td> <td align=\"left\">Branches</td> <td align=\"right\">80.2% (🎯 70%)</td> <td align=\"right\">9168 / 11430</td> </tr> </tbody> </table><details><summary>File Coverage</summary><table> <thead> <tr> <th align=\"left\">File</th> <th align=\"right\">Stmts</th> <th align=\"right\">Branches</th> <th align=\"right\">Functions</th> <th align=\"right\">Lines</th> <th align=\"left\">Uncovered Lines</th> </tr> </thead> <tbody> <tr> <td align=\"left\" colspan=\"6\"><b>Changed Files</b></td> </tr> <tr> <td align=\"left\"><a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts\">packages/excalidraw/eraser/index.ts</a></td> <td align=\"right\">22.89%</td> <td align=\"right\">100%</td> <td align=\"right\">33.33%</td> <td align=\"right\">22.89%</td> <td align=\"left\"><a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L52-L64\" class=\"text-red\">52-64</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L73-L76\" class=\"text-red\">73-76</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L79-L84\" class=\"text-red\">79-84</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L87-L188\" class=\"text-red\">87-188</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L191-L195\" class=\"text-red\">191-195</a>, <a href=\"https://github.com/excalidraw/excalidraw/blob/08dc7fb2c32a478fc142b863a441fd539ebefd7e/packages/excalidraw/eraser/index.ts#L199-L297\" class=\"text-red\">199-297</a></td> </tr> </tbody> </table></details>\n<em>Generated in workflow <a href=https://github.com/excalidraw/excalidraw/actions/runs/17724538534>#5800</a> for commit <a href=\"https://github.com/excalidraw/excalidraw/commit/08dc7fb2c32a478fc142b863a441fd539ebefd7e\">08dc7fb</a> by the <a href=\"https://github.com/davelosert/vitest-coverage-report-action\">Vitest Coverage Report Action</a></em>\n\n<!-- vitest-coverage-report-marker-root -->",
+						"author": "github-actions[bot]",
+						"createdAt": "2025-09-15T06:53:33Z"
+					}
+				],
+				"htmlUrl": "https://github.com/excalidraw/excalidraw/pull/9979"
+			}
+		}
+	]
+}
