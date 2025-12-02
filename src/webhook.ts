@@ -10,10 +10,14 @@ import { extractBranchFromRef } from "./core/branches";
 import { type Commit, filterCommits, type Sender } from "./core/filters";
 import { webhookLogger } from "./logger";
 import {
+	addPRToDay,
+	addPRTranslation,
 	clearBranchPR,
+	clearOrphanCommits,
 	closePR,
 	createOrUpdatePR,
 	getBranchPR,
+	getOrphanCommits,
 	removePRBlocker,
 	resolveBlockersForPR,
 	resolveReviewBlocker,
@@ -202,6 +206,39 @@ export function createWebhookApp(queue: Queue) {
 
 				// Index branch -> PR for push event association
 				await setBranchPR(repo, branch, prNumber);
+
+				// Backfill any orphaned commits from this branch (race condition fix)
+				const orphans = await getOrphanCommits(repo, branch);
+				if (orphans.length > 0) {
+					for (const orphan of orphans) {
+						await addPRTranslation(prNumber, {
+							sha: orphan.sha,
+							summary: orphan.summary,
+							category: orphan.category,
+							significance: orphan.significance,
+							author: orphan.author,
+							timestamp: orphan.timestamp,
+						});
+					}
+
+					// Update daily index for the orphan dates
+					const dates = [
+						...new Set(orphans.map((o) => o.timestamp.split("T")[0])),
+					];
+					for (const date of dates) {
+						if (date) {
+							await addPRToDay(date, prNumber);
+						}
+					}
+
+					// Clear orphans after backfill
+					await clearOrphanCommits(repo, branch);
+
+					log.info(
+						{ repo, prNumber, branch, backfilled: orphans.length },
+						"Backfilled orphaned commits to PR",
+					);
+				}
 
 				log.info({ repo, prNumber, branch }, "PR opened, metadata stored");
 			} catch (error) {

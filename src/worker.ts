@@ -19,6 +19,7 @@ import {
 	redis,
 	removePRBlocker,
 	setPRBlocker,
+	trackOrphanCommit,
 } from "./redis";
 import { processReportJob, type ReportJob } from "./reporter";
 import type { CommentJob, DigestJob } from "./webhook";
@@ -185,6 +186,17 @@ async function processDigestJob(
 				significance: result.significance,
 				branch,
 				sha,
+			});
+
+			// Track as orphan for potential PR backfill (24h TTL)
+			// If a PR is opened on this branch within 24h, the commit will be migrated
+			await trackOrphanCommit(repo, branch, {
+				sha,
+				summary,
+				category: result.category,
+				significance: result.significance,
+				author: user,
+				timestamp,
 			});
 		}
 

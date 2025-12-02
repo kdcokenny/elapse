@@ -520,6 +520,77 @@ export async function getDirectCommits(
 }
 
 // ============================================================================
+// Orphan Commits (for PR association race condition)
+// ============================================================================
+
+/**
+ * TTL for orphan commits: 24 hours.
+ * This is a short window to catch commits pushed just before a PR is opened.
+ */
+const ORPHAN_TTL = 24 * 60 * 60; // 24 hours
+
+/**
+ * Orphan commit data - commits without PR association that may be backfilled.
+ */
+export interface OrphanCommit {
+	sha: string;
+	summary: string;
+	category: string | null;
+	significance: string | null;
+	author: string;
+	timestamp: string;
+}
+
+/**
+ * Key for orphan commits on a branch.
+ * Format: elapse:orphan:{repo}:{branch}
+ */
+function orphanCommitsKey(repo: string, branch: string): string {
+	return `${KEY_PREFIX}:orphan:${repo}:${branch}`;
+}
+
+/**
+ * Track a commit as potentially orphaned (no PR association yet).
+ * Called when a commit is processed without a PR number.
+ * Has 24h TTL - if no PR is opened in that window, orphans expire.
+ */
+export async function trackOrphanCommit(
+	repo: string,
+	branch: string,
+	commit: OrphanCommit,
+): Promise<void> {
+	const client = getRedis();
+	const key = orphanCommitsKey(repo, branch);
+	await client.rpush(key, JSON.stringify(commit));
+	await client.expire(key, ORPHAN_TTL);
+}
+
+/**
+ * Get all orphan commits for a branch.
+ * Called when a PR is opened to backfill any orphaned commits.
+ */
+export async function getOrphanCommits(
+	repo: string,
+	branch: string,
+): Promise<OrphanCommit[]> {
+	const client = getRedis();
+	const raw = await client.lrange(orphanCommitsKey(repo, branch), 0, -1);
+	return raw.map((r) => JSON.parse(r) as OrphanCommit);
+}
+
+/**
+ * Clear orphan commits for a branch.
+ * Called after successfully backfilling orphans to a PR.
+ */
+export async function clearOrphanCommits(
+	repo: string,
+	branch: string,
+): Promise<void> {
+	const client = getRedis();
+	await client.del(orphanCommitsKey(repo, branch));
+}
+
+// ============================================================================
 // Lifecycle Management
 // ============================================================================
 
