@@ -3,7 +3,7 @@
  * Uses BullMQ repeatable jobs to schedule and generate reports.
  */
 
-import { type Job, type Queue, Worker } from "bullmq";
+import type { Job, Queue } from "bullmq";
 import { narrateFeature } from "./ai";
 import { type BlockerSummary, groupBlockersByUser } from "./core/blockers";
 import {
@@ -20,17 +20,15 @@ import { reportLogger } from "./logger";
 import {
 	getAllPRDataForDate,
 	getLastReportTimestamp,
-	redis,
 	setLastReportTimestamp,
 } from "./redis";
 
-const QUEUE_NAME = "elapse";
 const DISCORD_TIMEOUT_MS = 10000;
 
 // Enable in-progress section via env
 const SHOW_IN_PROGRESS = process.env.SHOW_IN_PROGRESS !== "false";
 
-interface ReportJob {
+export interface ReportJob {
 	type: "daily";
 	date?: string; // Optional override, defaults to today
 }
@@ -108,7 +106,7 @@ async function generateReport(
 
 	if (!hasMerged && !hasOpen && !hasDirect && totalBlockers === 0) {
 		log.info("No PR activity to report for date");
-		return { content: null, watermark }; // Will fall back to legacy or show no activity
+		return { content: formatNoActivityReport(date), watermark };
 	}
 
 	log.debug(
@@ -313,41 +311,5 @@ export async function setupReportScheduler(queue: Queue): Promise<void> {
 	);
 }
 
-/**
- * Create and start the report worker.
- */
-export function createReportWorker(): Worker<ReportJob> {
-	const worker = new Worker<ReportJob>(
-		QUEUE_NAME,
-		async (job) => {
-			// Only handle report jobs
-			if (job.name !== "report") {
-				return;
-			}
-			return processReportJob(job);
-		},
-		{
-			connection: redis,
-			concurrency: 1, // Only one report at a time
-		},
-	);
-
-	worker.on("completed", (job) => {
-		if (job.name === "report") {
-			reportLogger.info({ jobId: job.id }, "Report job completed");
-		}
-	});
-
-	worker.on("failed", (job, error) => {
-		if (job?.name === "report") {
-			reportLogger.error({ jobId: job.id, err: error }, "Report job failed");
-		}
-	});
-
-	reportLogger.info("Report worker started");
-
-	return worker;
-}
-
-// Export for testing
-export { generateReport };
+// Export for testing and worker integration
+export { generateReport, processReportJob };

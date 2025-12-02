@@ -1,5 +1,5 @@
 /**
- * BullMQ worker for processing commit digestion jobs.
+ * BullMQ worker for processing all job types (digest, comment, report).
  */
 
 import { createAppAuth } from "@octokit/auth-app";
@@ -20,6 +20,7 @@ import {
 	removePRBlocker,
 	setPRBlocker,
 } from "./redis";
+import { processReportJob, type ReportJob } from "./reporter";
 import type { CommentJob, DigestJob } from "./webhook";
 
 const MAX_DIFF_SIZE = 100000; // 100KB - skip larger diffs
@@ -286,16 +287,23 @@ async function processCommentJob(
 }
 
 // Job type union for worker
-type ElapseJob = DigestJob | CommentJob;
+type ElapseJob = DigestJob | CommentJob | ReportJob;
 
 /**
  * Process any job - routes to the appropriate processor.
+ * Fails fast with UnrecoverableError for unknown job types.
  */
 async function processJob(job: Job<ElapseJob>): Promise<unknown> {
-	if (job.name === "comment") {
-		return processCommentJob(job as Job<CommentJob>);
+	switch (job.name) {
+		case "digest":
+			return processDigestJob(job as Job<DigestJob>);
+		case "comment":
+			return processCommentJob(job as Job<CommentJob>);
+		case "report":
+			return processReportJob(job as Job<ReportJob>);
+		default:
+			throw new UnrecoverableError(`Unknown job type: ${job.name}`);
 	}
-	return processDigestJob(job as Job<DigestJob>);
 }
 
 /**

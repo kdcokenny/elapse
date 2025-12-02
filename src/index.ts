@@ -8,7 +8,7 @@ import { createProbot } from "probot";
 import { type Credentials, getCredentials } from "./credentials";
 import { logger } from "./logger";
 import { redis } from "./redis";
-import { createReportWorker, setupReportScheduler } from "./reporter";
+import { setupReportScheduler } from "./reporter";
 import { createNormalServer, createSetupServer } from "./routes";
 import { initShutdownHandlers, registerShutdownHandler } from "./shutdown";
 import { createWebhookApp } from "./webhook";
@@ -94,24 +94,14 @@ async function startNormalMode(credentials: Credentials, port: number) {
 		logger.info("HTTP server stopped");
 	});
 
-	// Start the digest worker
-	const digestWorker = createWorker();
+	// Start the unified worker (handles digest, comment, and report jobs)
+	const worker = createWorker();
 
-	// Register digest worker shutdown
+	// Register worker shutdown
 	registerShutdownHandler(async () => {
-		logger.info("Closing digest worker...");
-		await digestWorker.close();
-		logger.info("Digest worker closed");
-	});
-
-	// Start the report worker
-	const reportWorker = createReportWorker();
-
-	// Register report worker shutdown
-	registerShutdownHandler(async () => {
-		logger.info("Closing report worker...");
-		await reportWorker.close();
-		logger.info("Report worker closed");
+		logger.info("Closing worker...");
+		await worker.close();
+		logger.info("Worker closed");
 	});
 
 	// Setup daily report scheduler
