@@ -10,8 +10,9 @@ bun run dev          # Run with hot reload
 bun run start        # Run production
 bun test             # Run all tests
 bun test tests/core/filters.test.ts  # Run single test file
-bun run typecheck    # TypeScript check
-bun run biome check . # Lint and format check
+bun run check        # Lint and type check
+bun run check:biome  # Biome only (lint)
+bun run check:types  # TypeScript only
 bun run biome check --write . # Auto-fix lint/format
 ```
 

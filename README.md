@@ -102,8 +102,8 @@ bun run dev
 # Run tests
 bun test
 
-# Type check
-bun run typecheck
+# Lint and type check
+bun run check
 ```
 
 ## Tech Stack

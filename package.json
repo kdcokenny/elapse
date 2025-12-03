@@ -10,9 +10,9 @@
 		"test:all": "bun test",
 		"test:e2e": "bun test tests/e2e/ --timeout 180000",
 		"test:e2e:collect": "bun tests/scripts/collect-fixtures.ts",
-		"typecheck": "tsc --noEmit",
-		"lint": "biome check .",
-		"format": "biome format ."
+		"check:biome": "biome check .",
+		"check:types": "tsc --noEmit",
+		"check": "bun run check:biome && bun run check:types"
 	},
 	"dependencies": {
 		"@ai-sdk/google": "^2.0.43",
