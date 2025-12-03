@@ -2,7 +2,7 @@
  * E2E Tests with Real GitHub Data
  *
  * Uses real commit fixtures collected from Excalidraw to test the full pipeline including:
- * - Branch-to-PR index (setBranchPR, getBranchPR, clearBranchPR)
+ * - Branch-first storage (commits stored by branch, resolved to PRs at read time)
  * - Commit translation (mocked for speed, real data for accuracy)
  * - PR-centric storage
  * - Report generation
@@ -74,7 +74,7 @@ describe("E2E: Real Repository Data", () => {
 	});
 
 	test.skipIf(!!SKIP_REASON)(
-		"branch-to-PR index correctly associates commits",
+		"branch-first storage correctly stores commits by branch",
 		async () => {
 			// Use any available repo with PR data
 			const repos = listAvailableRepos();
@@ -108,10 +108,10 @@ describe("E2E: Real Repository Data", () => {
 
 			console.log(`Testing with ${testRepo} PR #${pr.number}`);
 
-			// Step 1: Open the PR (sets branch index)
+			// Step 1: Open the PR (stores PR metadata)
 			await simulatePROpened(fullRepo, pr);
 
-			// Step 2: Push a commit (should look up PR from branch index)
+			// Step 2: Push a commit (stores by branch, no PR lookup needed)
 			const mockTranslator = createMockTranslator();
 			const result = await simulatePush(
 				fullRepo,
@@ -120,24 +120,20 @@ describe("E2E: Real Repository Data", () => {
 				mockTranslator,
 			);
 
-			// Verify the commit was correctly associated with the PR
-			expect(result.prNumber).toBe(pr.number);
-			console.log(`  Commit associated with PR #${result.prNumber}`);
+			// Verify commit was stored with translation
+			expect(result.translation).toBeDefined();
+			expect(result.translation.sha).toBe(testCommit.sha);
+			console.log(`  Commit stored for branch: ${pr.branch}`);
 
-			// Step 3: Merge the PR (clears branch index)
-			await simulatePRMerged(fullRepo, pr);
-
-			// Step 4: Push another commit to the same branch (should have no PR)
-			const anotherResult = await simulatePush(
-				fullRepo,
-				pr.branch,
-				{ ...testCommit, sha: "abc123456789" },
-				mockTranslator,
+			// Step 3: Merge the PR
+			const date = new Date().toISOString().split("T")[0] ?? "";
+			await simulatePRMerged(pr, date);
+			console.log(
+				"  PR merged - branch data remains (cleanup is background job)",
 			);
 
-			// After merge, branch index is cleared
-			expect(anotherResult.prNumber).toBeUndefined();
-			console.log("  After merge: branch index cleared");
+			// Note: In branch-first architecture, commits remain stored by branch
+			// even after merge. Cleanup is done by a background job, not at merge time.
 		},
 	);
 
@@ -149,7 +145,7 @@ describe("E2E: Real Repository Data", () => {
 			const stats = {
 				totalCommits: 0,
 				totalPRs: 0,
-				associations: 0,
+				branchCommits: 0,
 			};
 
 			for (const repo of repos) {
@@ -185,8 +181,9 @@ describe("E2E: Real Repository Data", () => {
 							mockTranslator,
 						);
 
-						if (result.prNumber) {
-							stats.associations++;
+						// Branch-first: all commits are stored by branch
+						if (result.translation) {
+							stats.branchCommits++;
 						}
 					}
 
@@ -199,7 +196,7 @@ describe("E2E: Real Repository Data", () => {
 			console.log(
 				`\nTotal: ${stats.totalCommits} commits, ${stats.totalPRs} PRs`,
 			);
-			console.log(`Branch-to-PR associations: ${stats.associations}`);
+			console.log(`Branch commits stored: ${stats.branchCommits}`);
 
 			// Verify we processed some data
 			expect(stats.totalCommits).toBeGreaterThan(0);

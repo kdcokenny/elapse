@@ -12,7 +12,7 @@ import {
 	resolveReviewBlocker,
 	storeReviewBlocker,
 } from "../../src/redis";
-import { initTestRedis, resetTestRedis, restoreRedis } from "../e2e/test-redis";
+import { initTestRedis, resetTestRedis, restoreRedis } from "./test-redis";
 
 // Helper to get all blockers from the persistent blockers hash
 async function getActivePersistentBlockers(): Promise<PRBlocker[]> {

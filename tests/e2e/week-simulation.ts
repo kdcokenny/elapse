@@ -61,12 +61,10 @@
 
 import { analyzeComment, translateDiff } from "../../src/ai";
 import {
-	addPRToDay,
-	addPRTranslation,
-	clearBranchPR,
+	addBranchCommit,
 	createOrUpdatePR,
 	getPRMetadata,
-	setBranchPR,
+	recordPRMerged,
 	setPRBlocker,
 	setPRStatus,
 } from "../../src/redis";
@@ -110,7 +108,7 @@ async function processEvent(
 				status: "open",
 				openedAt: event.timestamp,
 			});
-			await setBranchPR(FULL_REPO, data.branch, event.prNumber);
+			// No branch->PR index - read-time resolution handles association
 			console.log(`    → Opened PR #${event.prNumber}: ${data.title}`);
 			break;
 		}
@@ -120,6 +118,13 @@ async function processEvent(
 			const shortSha = data.sha.slice(0, 7);
 			const firstLine = data.message.split("\n")[0];
 			console.log(`    [${shortSha}] ${firstLine}`);
+
+			// Get branch from PR metadata
+			const prMeta = await getPRMetadata(event.prNumber);
+			if (!prMeta) {
+				console.log("      → Skipped (PR metadata not found)");
+				break;
+			}
 
 			console.log("      → Translating with AI...");
 			try {
@@ -135,7 +140,8 @@ async function processEvent(
 					`      → Category: ${translation.category}, Significance: ${translation.significance}`,
 				);
 
-				await addPRTranslation(event.prNumber, {
+				// Store by branch - PR association happens at read time
+				await addBranchCommit(FULL_REPO, prMeta.branch, {
 					sha: data.sha,
 					summary: translation.summary ?? "",
 					category: translation.category ?? null,
@@ -143,7 +149,6 @@ async function processEvent(
 					author: data.user,
 					timestamp: event.timestamp,
 				});
-				await addPRToDay(dateStr, event.prNumber);
 			} catch (error) {
 				console.error(`      → AI Error: ${(error as Error).message}`);
 			}
@@ -191,7 +196,8 @@ async function processEvent(
 		case "pr_merge": {
 			const data = event.data as PRMergeData;
 			await setPRStatus(event.prNumber, "merged", data.mergedAt);
-			await clearBranchPR(FULL_REPO, data.branch);
+			await recordPRMerged(event.prNumber, dateStr);
+			// No branch cleanup - handled by background job
 			console.log(`    🚢 PR #${event.prNumber} merged: ${data.title}`);
 			break;
 		}

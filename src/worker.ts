@@ -11,15 +11,12 @@ import { getPrivateKey } from "./credentials";
 import { DiffTooLargeError, GitHubAPIError, NonRetryableError } from "./errors";
 import { workerLogger } from "./logger";
 import {
+	addBranchCommit,
 	addDirectCommit,
-	addPRToDay,
-	addPRTranslation,
-	createOrUpdatePR,
 	getPRBlockers,
 	redis,
 	removePRBlocker,
 	setPRBlocker,
-	trackOrphanCommit,
 } from "./redis";
 import { processReportJob, type ReportJob } from "./reporter";
 import type { CommentJob, DigestJob } from "./webhook";
@@ -84,20 +81,13 @@ async function fetchDiff(
 
 /**
  * Process a single digest job.
+ * Branch-first architecture: commits are stored by branch, resolved to PRs at read time.
  */
 async function processDigestJob(
 	job: Job<DigestJob>,
 ): Promise<{ translation: string; section: string }> {
-	const {
-		repo,
-		user,
-		sha,
-		message,
-		installationId,
-		timestamp,
-		branch,
-		prNumber,
-	} = job.data;
+	const { repo, user, sha, message, installationId, timestamp, branch } =
+		job.data;
 	const [owner = "", repoName = ""] = repo.split("/");
 
 	// Classify the branch to determine section
@@ -110,7 +100,6 @@ async function processDigestJob(
 		user,
 		branch,
 		section,
-		prNumber,
 	});
 
 	log.info("Processing commit");
@@ -153,33 +142,9 @@ async function processDigestJob(
 		const summary = result.summary;
 		const date = timestamp.split("T")[0] ?? timestamp; // YYYY-MM-DD
 
-		// PR-centric storage: route based on whether this commit is PR-associated
-		if (prNumber) {
-			const prTitle = `PR #${prNumber}`;
-
-			// Create or update PR metadata
-			await createOrUpdatePR(prNumber, {
-				repo,
-				branch,
-				title: prTitle,
-				authors: [user],
-				status: "open",
-			});
-
-			// Add translation to PR
-			await addPRTranslation(prNumber, {
-				sha,
-				summary,
-				category: result.category,
-				significance: result.significance,
-				author: user,
-				timestamp,
-			});
-
-			// Add PR to daily index
-			await addPRToDay(date, prNumber);
-		} else {
-			// Direct commit (no PR) - store in direct commits bucket
+		// Branch-first storage: route based on branch type
+		if (section === "shipped") {
+			// Main branch commits go to direct commits (no PR association)
 			await addDirectCommit(date, {
 				summary,
 				category: result.category,
@@ -187,10 +152,10 @@ async function processDigestJob(
 				branch,
 				sha,
 			});
-
-			// Track as orphan for potential PR backfill (24h TTL)
-			// If a PR is opened on this branch within 24h, the commit will be migrated
-			await trackOrphanCommit(repo, branch, {
+		} else {
+			// Feature branch commits go to branch storage
+			// PR association happens at read time (report generation)
+			await addBranchCommit(repo, branch, {
 				sha,
 				summary,
 				category: result.category,

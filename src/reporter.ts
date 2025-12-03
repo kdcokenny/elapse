@@ -18,8 +18,14 @@ import { getWatermark } from "./core/watermark";
 import { DiscordWebhookError } from "./errors";
 import { reportLogger } from "./logger";
 import {
+	deleteBranchCommits,
+	getAllBranchKeys,
+	getAllOpenPRNumbers,
 	getAllPRDataForDate,
+	getBranchCommits,
 	getLastReportTimestamp,
+	getPRMetadata,
+	parseBranchKey,
 	setLastReportTimestamp,
 } from "./redis";
 
@@ -309,6 +315,80 @@ export async function setupReportScheduler(queue: Queue): Promise<void> {
 		{ schedule, timezone },
 		"Daily report scheduler configured",
 	);
+}
+
+// ============================================================================
+// Branch Cleanup (Background Job)
+// ============================================================================
+
+const STALE_BRANCH_DAYS = 14;
+
+/**
+ * Clean up stale branch commits.
+ * A branch is stale if:
+ * 1. No commits in the last 14 days AND
+ * 2. No open PR references this branch
+ *
+ * This runs as part of the report scheduler (off-peak hours).
+ */
+export async function cleanupStaleBranches(): Promise<{
+	scanned: number;
+	deleted: number;
+}> {
+	const log = reportLogger.child({ component: "cleanup" });
+	log.info("Starting stale branch cleanup");
+
+	const branchKeys = await getAllBranchKeys();
+	const openPRNumbers = await getAllOpenPRNumbers();
+
+	// Build set of branches with open PRs
+	const branchesWithOpenPRs = new Set<string>();
+	for (const prNumber of openPRNumbers) {
+		const meta = await getPRMetadata(prNumber);
+		if (meta) {
+			branchesWithOpenPRs.add(`${meta.repo}:${meta.branch}`);
+		}
+	}
+
+	const now = Date.now();
+	const staleThreshold = now - STALE_BRANCH_DAYS * 24 * 60 * 60 * 1000;
+	let deleted = 0;
+
+	for (const key of branchKeys) {
+		const parsed = parseBranchKey(key);
+		if (!parsed) continue;
+
+		const { repo, branch } = parsed;
+		const branchId = `${repo}:${branch}`;
+
+		// Skip branches with open PRs
+		if (branchesWithOpenPRs.has(branchId)) {
+			continue;
+		}
+
+		// Check last commit timestamp
+		const commits = await getBranchCommits(repo, branch);
+		if (commits.length === 0) {
+			// Empty branch, delete it
+			await deleteBranchCommits(repo, branch);
+			deleted++;
+			continue;
+		}
+
+		// Find most recent commit
+		const lastCommitTime = Math.max(
+			...commits.map((c) => new Date(c.timestamp).getTime()),
+		);
+
+		if (lastCommitTime < staleThreshold) {
+			await deleteBranchCommits(repo, branch);
+			deleted++;
+			log.debug({ repo, branch, lastCommitTime }, "Deleted stale branch");
+		}
+	}
+
+	log.info({ scanned: branchKeys.length, deleted }, "Branch cleanup complete");
+	return { scanned: branchKeys.length, deleted };
 }
 
 // Export for testing and worker integration

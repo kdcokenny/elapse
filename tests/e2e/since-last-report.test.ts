@@ -17,9 +17,9 @@ import {
 	test,
 } from "bun:test";
 import {
-	addPRToDay,
-	addPRTranslation,
+	addBranchCommit,
 	createOrUpdatePR,
+	recordPRMerged,
 	setPRStatus,
 } from "../../src/redis";
 import { generateReport } from "../../src/reporter";
@@ -53,7 +53,7 @@ describe("Since Last Report E2E", () => {
 			});
 
 			// Friday 2pm commit (after report)
-			await addPRTranslation(201, {
+			await addBranchCommit("test/repo", "feature/weekend", {
 				sha: "fri1",
 				summary: "Added user validation",
 				category: "feature",
@@ -63,7 +63,7 @@ describe("Since Last Report E2E", () => {
 			});
 
 			// Saturday commit
-			await addPRTranslation(201, {
+			await addBranchCommit("test/repo", "feature/weekend", {
 				sha: "sat1",
 				summary: "Fixed edge case in validation",
 				category: "fix",
@@ -72,8 +72,7 @@ describe("Since Last Report E2E", () => {
 				timestamp: "2025-02-22T11:00:00.000Z",
 			});
 
-			await addPRToDay("2025-02-21", 201);
-			await addPRToDay("2025-02-22", 201);
+			// No addPRToDay for open PRs - handled by read-time resolution
 
 			// Create PR merged on Saturday (hotfix)
 			await createOrUpdatePR(202, {
@@ -84,7 +83,7 @@ describe("Since Last Report E2E", () => {
 				status: "open",
 			});
 
-			await addPRTranslation(202, {
+			await addBranchCommit("test/repo", "hotfix/urgent", {
 				sha: "hot1",
 				summary: "Fixed production outage",
 				category: "fix",
@@ -94,7 +93,7 @@ describe("Since Last Report E2E", () => {
 			});
 
 			await setPRStatus(202, "merged", "2025-02-22T09:00:00.000Z");
-			await addPRToDay("2025-02-22", 202);
+			await recordPRMerged(202, "2025-02-22");
 
 			// Monday report: query since Friday 9am
 			const { content, watermark } = await generateReport(
@@ -130,7 +129,7 @@ describe("Since Last Report E2E", () => {
 				status: "open",
 			});
 
-			await addPRTranslation(301, {
+			await addBranchCommit("test/repo", "feature/test", {
 				sha: "test1",
 				summary: "Test commit",
 				category: "feature",
@@ -139,7 +138,7 @@ describe("Since Last Report E2E", () => {
 				timestamp: "2025-02-24T10:00:00.000Z",
 			});
 
-			await addPRToDay("2025-02-24", 301);
+			// No addPRToDay for open PRs - handled by read-time resolution
 
 			const sinceTimestamp = "2025-02-24T09:00:00.000Z";
 
@@ -171,7 +170,7 @@ describe("Since Last Report E2E", () => {
 				status: "open",
 			});
 
-			await addPRTranslation(302, {
+			await addBranchCommit("test/repo", "feature/reported", {
 				sha: "rep1",
 				summary: "Already reported commit",
 				category: "feature",
@@ -180,7 +179,7 @@ describe("Since Last Report E2E", () => {
 				timestamp: "2025-02-24T10:00:00.000Z",
 			});
 
-			await addPRToDay("2025-02-24", 302);
+			// No addPRToDay for open PRs - handled by read-time resolution
 
 			// First report
 			const { watermark } = await generateReport(

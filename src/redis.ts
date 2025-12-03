@@ -214,16 +214,8 @@ function prMetadataKey(prNumber: number): string {
 	return `${KEY_PREFIX}:pr:${prNumber}`;
 }
 
-function prTranslationsKey(prNumber: number): string {
-	return `${KEY_PREFIX}:pr:${prNumber}:translations`;
-}
-
 function prBlockersKey(prNumber: number): string {
 	return `${KEY_PREFIX}:pr:${prNumber}:blockers`;
-}
-
-function dayPRsKey(date: string): string {
-	return `${KEY_PREFIX}:day:${date}:prs`;
 }
 
 function directCommitsKey(date: string): string {
@@ -369,8 +361,7 @@ export async function setPRStatus(
 
 	if (ttl) {
 		await client.expire(key, ttl);
-		// Also set TTL on related keys
-		await client.expire(prTranslationsKey(prNumber), ttl);
+		// Also set TTL on blockers
 		await client.expire(prBlockersKey(prNumber), ttl);
 		// Remove from open PRs index
 		await client.srem(openPRsIndexKey(), prNumber.toString());
@@ -379,34 +370,6 @@ export async function setPRStatus(
 		// Add to open PRs index
 		await client.sadd(openPRsIndexKey(), prNumber.toString());
 	}
-}
-
-// ============================================================================
-// PR Translations Operations
-// ============================================================================
-
-/**
- * Add a translation to a PR.
- */
-export async function addPRTranslation(
-	prNumber: number,
-	translation: PRTranslation,
-): Promise<void> {
-	const client = getRedis();
-	const key = prTranslationsKey(prNumber);
-	await client.rpush(key, JSON.stringify(translation));
-	// No TTL - inherits from PR metadata status
-}
-
-/**
- * Get all translations for a PR.
- */
-export async function getPRTranslations(
-	prNumber: number,
-): Promise<PRTranslation[]> {
-	const client = getRedis();
-	const raw = await client.lrange(prTranslationsKey(prNumber), 0, -1);
-	return raw.map((r) => JSON.parse(r) as PRTranslation);
 }
 
 // ============================================================================
@@ -461,24 +424,32 @@ export async function getPRBlockers(
 // ============================================================================
 
 /**
- * Add a PR to a day's activity index.
+ * Key for merged PRs on a given day.
  */
-export async function addPRToDay(
-	date: string,
-	prNumber: number,
-): Promise<void> {
-	const client = getRedis();
-	const key = dayPRsKey(date);
-	await client.sadd(key, prNumber.toString());
-	await client.expire(key, PR_TTL.DAILY_INDEX);
+function dayMergedPRsKey(date: string): string {
+	return `${KEY_PREFIX}:day:${date}:prs:merged`;
 }
 
 /**
- * Get all PR numbers with activity on a given day.
+ * Record that a PR was merged on a given day.
+ * Called when PR is closed with merged=true.
  */
-export async function getPRsForDay(date: string): Promise<number[]> {
+export async function recordPRMerged(
+	prNumber: number,
+	date: string,
+): Promise<void> {
 	const client = getRedis();
-	const raw = await client.smembers(dayPRsKey(date));
+	const key = dayMergedPRsKey(date);
+	await client.sadd(key, prNumber.toString());
+	await client.expire(key, 30 * 24 * 3600); // 30 days
+}
+
+/**
+ * Get all PR numbers merged on a given day.
+ */
+export async function getMergedPRsForDay(date: string): Promise<number[]> {
+	const client = getRedis();
+	const raw = await client.smembers(dayMergedPRsKey(date));
 	return raw.map((r) => parseInt(r, 10));
 }
 
@@ -520,19 +491,14 @@ export async function getDirectCommits(
 }
 
 // ============================================================================
-// Orphan Commits (for PR association race condition)
+// Branch Commits Storage (Branch-First Architecture)
 // ============================================================================
 
 /**
- * TTL for orphan commits: 24 hours.
- * This is a short window to catch commits pushed just before a PR is opened.
+ * Commit stored per branch.
+ * Commits are stored by branch and resolved to PRs at read time.
  */
-const ORPHAN_TTL = 24 * 60 * 60; // 24 hours
-
-/**
- * Orphan commit data - commits without PR association that may be backfilled.
- */
-export interface OrphanCommit {
+export interface BranchCommit {
 	sha: string;
 	summary: string;
 	category: string | null;
@@ -542,52 +508,97 @@ export interface OrphanCommit {
 }
 
 /**
- * Key for orphan commits on a branch.
- * Format: elapse:orphan:{repo}:{branch}
+ * Key for branch commits.
+ * Format: elapse:branch:{repo}:{branch}:commits
  */
-function orphanCommitsKey(repo: string, branch: string): string {
-	return `${KEY_PREFIX}:orphan:${repo}:${branch}`;
+function branchCommitsKey(repo: string, branch: string): string {
+	return `${KEY_PREFIX}:branch:${repo}:${branch}:commits`;
 }
 
 /**
- * Track a commit as potentially orphaned (no PR association yet).
- * Called when a commit is processed without a PR number.
- * Has 24h TTL - if no PR is opened in that window, orphans expire.
+ * Add a commit to branch storage.
+ * No TTL - cleanup is handled by background job.
  */
-export async function trackOrphanCommit(
+export async function addBranchCommit(
 	repo: string,
 	branch: string,
-	commit: OrphanCommit,
+	commit: BranchCommit,
 ): Promise<void> {
 	const client = getRedis();
-	const key = orphanCommitsKey(repo, branch);
+	const key = branchCommitsKey(repo, branch);
 	await client.rpush(key, JSON.stringify(commit));
-	await client.expire(key, ORPHAN_TTL);
+	// No TTL - data persists until explicit cleanup
 }
 
 /**
- * Get all orphan commits for a branch.
- * Called when a PR is opened to backfill any orphaned commits.
+ * Get all commits for a branch.
  */
-export async function getOrphanCommits(
+export async function getBranchCommits(
 	repo: string,
 	branch: string,
-): Promise<OrphanCommit[]> {
+): Promise<BranchCommit[]> {
 	const client = getRedis();
-	const raw = await client.lrange(orphanCommitsKey(repo, branch), 0, -1);
-	return raw.map((r) => JSON.parse(r) as OrphanCommit);
+	const raw = await client.lrange(branchCommitsKey(repo, branch), 0, -1);
+	return raw.map((r) => JSON.parse(r) as BranchCommit);
 }
 
 /**
- * Clear orphan commits for a branch.
- * Called after successfully backfilling orphans to a PR.
+ * Get commits for a branch filtered for a PR.
+ * For merged PRs: returns commits where timestamp <= mergedAt
+ * For open PRs: returns all commits (no filter)
  */
-export async function clearOrphanCommits(
+export async function getBranchCommitsForPR(
+	repo: string,
+	branch: string,
+	mergedAt?: string,
+): Promise<BranchCommit[]> {
+	const commits = await getBranchCommits(repo, branch);
+	if (!mergedAt) {
+		return commits; // Open PR - return all
+	}
+	return commits.filter((c) => c.timestamp <= mergedAt);
+}
+
+/**
+ * Delete all commits for a branch.
+ * Called by cleanup job for stale branches.
+ */
+export async function deleteBranchCommits(
 	repo: string,
 	branch: string,
 ): Promise<void> {
 	const client = getRedis();
-	await client.del(orphanCommitsKey(repo, branch));
+	await client.del(branchCommitsKey(repo, branch));
+}
+
+/**
+ * Get all branch commit keys for cleanup iteration.
+ * Returns keys matching elapse:branch:*:commits pattern.
+ */
+export async function getAllBranchKeys(): Promise<string[]> {
+	const client = getRedis();
+	return client.keys(`${KEY_PREFIX}:branch:*:commits`);
+}
+
+/**
+ * Parse a branch key to extract repo and branch.
+ * Key format: elapse:branch:{repo}:{branch}:commits
+ */
+export function parseBranchKey(
+	key: string,
+): { repo: string; branch: string } | null {
+	const match = key.match(/^elapse:branch:(.+?):(.+?):commits$/);
+	if (!match) return null;
+	// Handle repo format "owner/reponame" - the branch is everything after repo
+	const parts = key
+		.replace(`${KEY_PREFIX}:branch:`, "")
+		.replace(":commits", "")
+		.split(":");
+	if (parts.length < 2) return null;
+	// First two parts are owner/repo, rest is branch
+	const repo = `${parts[0]}/${parts[1]}`;
+	const branch = parts.slice(2).join(":");
+	return { repo, branch };
 }
 
 // ============================================================================
@@ -610,56 +621,6 @@ export async function closePR(
 		const client = getRedis();
 		await client.del(prBlockersKey(prNumber));
 	}
-}
-
-// ============================================================================
-// Branch-to-PR Index (for associating push events with PRs)
-// ============================================================================
-
-/**
- * Generate key for branch-to-PR mapping.
- * Format: elapse:branch:{repo}:{branch}
- */
-function branchToPRKey(repo: string, branch: string): string {
-	return `${KEY_PREFIX}:branch:${repo}:${branch}`;
-}
-
-/**
- * Associate a branch with a PR number.
- * Called when a PR is opened.
- */
-export async function setBranchPR(
-	repo: string,
-	branch: string,
-	prNumber: number,
-): Promise<void> {
-	const client = getRedis();
-	await client.set(branchToPRKey(repo, branch), prNumber.toString());
-}
-
-/**
- * Get the PR number associated with a branch.
- * Returns undefined if no PR is associated.
- */
-export async function getBranchPR(
-	repo: string,
-	branch: string,
-): Promise<number | undefined> {
-	const client = getRedis();
-	const result = await client.get(branchToPRKey(repo, branch));
-	return result ? parseInt(result, 10) : undefined;
-}
-
-/**
- * Remove the branch-to-PR association.
- * Called when a PR is closed (merged or not).
- */
-export async function clearBranchPR(
-	repo: string,
-	branch: string,
-): Promise<void> {
-	const client = getRedis();
-	await client.del(branchToPRKey(repo, branch));
 }
 
 // ============================================================================
@@ -699,11 +660,12 @@ function getDateRange(sinceTimestamp: string, endDate: string): string[] {
 }
 
 /**
- * Get all PR data for reporting.
- * When sinceTimestamp is provided, returns activity since that timestamp (for "since last report").
- * Otherwise, returns activity for the given date only (legacy behavior).
+ * Get all PR data for reporting using branch-first read-time resolution.
  *
- * Returns ALL open PRs (regardless of daily activity), merged PRs (since timestamp), and direct commits.
+ * Architecture: Commits are stored by branch, PRs store metadata with branch reference.
+ * At report time, we resolve PR→branch→commits relationships.
+ *
+ * Returns ALL open PRs, merged PRs (since timestamp), and direct commits.
  */
 export async function getAllPRDataForDate(
 	date: string,
@@ -713,35 +675,31 @@ export async function getAllPRDataForDate(
 	mergedPRs: Map<number, PRReportData & { blockersResolved: string[] }>;
 	directCommits: StoredTranslation[];
 }> {
-	// Get PRs with activity in the reporting window
-	let prsWithActivity: number[];
-
-	if (sinceTimestamp) {
-		// Query all days from sinceTimestamp to date
-		const dateRange = getDateRange(sinceTimestamp, date);
-		const prSets = await Promise.all(dateRange.map((d) => getPRsForDay(d)));
-		prsWithActivity = [...new Set(prSets.flat())];
-	} else {
-		prsWithActivity = await getPRsForDay(date);
-	}
-
-	// Also include all open PRs (regardless of daily activity)
+	// Get all open PRs
 	const allOpenPRs = await getAllOpenPRNumbers();
 
-	// Create a set of PRs with activity for quick lookup
-	const activitySet = new Set(prsWithActivity);
+	// Get merged PRs in date range
+	let mergedPRNumbers: number[];
+	if (sinceTimestamp) {
+		const dateRange = getDateRange(sinceTimestamp, date);
+		const mergedSets = await Promise.all(
+			dateRange.map((d) => getMergedPRsForDay(d)),
+		);
+		mergedPRNumbers = [...new Set(mergedSets.flat())];
+	} else {
+		mergedPRNumbers = await getMergedPRsForDay(date);
+	}
 
 	// Union of all PR numbers we need to fetch
-	const allPRNumbers = [...new Set([...prsWithActivity, ...allOpenPRs])];
+	const allPRNumbers = [...new Set([...allOpenPRs, ...mergedPRNumbers])];
 
-	// Fetch all PR data in parallel
+	// Fetch PR metadata and blockers in parallel
 	const prDataPromises = allPRNumbers.map(async (prNumber) => {
-		const [meta, translations, blockers] = await Promise.all([
+		const [meta, blockers] = await Promise.all([
 			getPRMetadata(prNumber),
-			getPRTranslations(prNumber),
 			getPRBlockers(prNumber),
 		]);
-		return { prNumber, meta, translations, blockers };
+		return { prNumber, meta, blockers };
 	});
 
 	const prDataResults = await Promise.all(prDataPromises);
@@ -753,17 +711,38 @@ export async function getAllPRDataForDate(
 		PRReportData & { blockersResolved: string[] }
 	>();
 
-	for (const { prNumber, meta, translations, blockers } of prDataResults) {
+	// Read-time resolution: For each PR, fetch commits from branch storage
+	for (const { prNumber, meta, blockers } of prDataResults) {
 		if (!meta) continue;
 
-		// Filter translations: since timestamp if provided, otherwise by date
+		// Get commits from branch storage (read-time resolution)
+		const branchCommits = await getBranchCommitsForPR(
+			meta.repo,
+			meta.branch,
+			meta.mergedAt, // For merged PRs, filter commits <= mergedAt
+		);
+
+		// Convert BranchCommit to PRTranslation format
+		const translations: PRTranslation[] = branchCommits.map((c) => ({
+			sha: c.sha,
+			summary: c.summary,
+			category: c.category,
+			significance: c.significance,
+			author: c.author,
+			timestamp: c.timestamp,
+		}));
+
+		// Filter by report window
 		const filteredTranslations = sinceTimestamp
 			? translations.filter((t) => t.timestamp >= sinceTimestamp)
 			: translations.filter((t) => t.timestamp.startsWith(date));
 
-		const hasActivityToday = activitySet.has(prNumber);
+		// Check for activity today
+		const hasActivityToday = translations.some((t) =>
+			t.timestamp.startsWith(date),
+		);
 
-		// Check if merged since last report (or today if no timestamp)
+		// Check if merged since last report
 		const isMergedInWindow = sinceTimestamp
 			? meta.status === "merged" &&
 				meta.mergedAt &&
@@ -771,20 +750,18 @@ export async function getAllPRDataForDate(
 			: meta.status === "merged" && meta.mergedAt?.startsWith(date);
 
 		if (isMergedInWindow) {
-			// Merged in reporting window - include all translations and note resolved blockers
 			const blockersResolved = Array.from(blockers.values())
 				.filter((b) => b.resolvedAt)
 				.map((b) => b.description);
 
 			mergedPRs.set(prNumber, {
 				meta,
-				translations, // All translations, not just window's
+				translations, // All translations for merged PR
 				blockers,
 				hasActivityToday,
 				blockersResolved,
 			});
 		} else if (meta.status === "open") {
-			// All open PRs - include regardless of daily activity
 			openPRs.set(prNumber, {
 				meta,
 				translations: filteredTranslations,

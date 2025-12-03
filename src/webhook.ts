@@ -10,18 +10,12 @@ import { extractBranchFromRef } from "./core/branches";
 import { type Commit, filterCommits, type Sender } from "./core/filters";
 import { webhookLogger } from "./logger";
 import {
-	addPRToDay,
-	addPRTranslation,
-	clearBranchPR,
-	clearOrphanCommits,
 	closePR,
 	createOrUpdatePR,
-	getBranchPR,
-	getOrphanCommits,
+	recordPRMerged,
 	removePRBlocker,
 	resolveBlockersForPR,
 	resolveReviewBlocker,
-	setBranchPR,
 	setPRBlocker,
 	storeReviewBlocker,
 } from "./redis";
@@ -34,7 +28,6 @@ export interface DigestJob {
 	installationId: number;
 	timestamp: string;
 	branch: string;
-	prNumber?: number;
 }
 
 export interface CommentJob {
@@ -47,20 +40,6 @@ export interface CommentJob {
 	author: string;
 	installationId: number;
 	timestamp: string;
-}
-
-/**
- * Extract PR number from commit message.
- * GitHub includes PR numbers in squash/merge commits: `feat: add auth (#234)`
- */
-function extractPrNumber(message: string): number | undefined {
-	// Match PR number at end of first line: "message (#123)"
-	const firstLine = message.split("\n")[0] ?? "";
-	const match = firstLine.match(/\(#(\d+)\)$/);
-	if (match?.[1]) {
-		return parseInt(match[1], 10);
-	}
-	return undefined;
 }
 
 const JOB_OPTIONS = {
@@ -139,15 +118,10 @@ export function createWebhookApp(queue: Queue) {
 				}
 
 				// Add jobs for each included commit
+				// Branch-first: no PR lookup needed, association happens at read time
 				const timestamp = new Date().toISOString();
 
-				// Look up PR number from branch index (set when PR is opened)
-				const branchPRNumber = await getBranchPR(repo, branch);
-
 				for (const commit of included) {
-					// Try commit message first (for squash merges), then branch index
-					const prNumber = extractPrNumber(commit.message) ?? branchPRNumber;
-
 					const jobData: DigestJob = {
 						repo,
 						user: commit.author.username ?? commit.author.name ?? sender.login,
@@ -156,7 +130,6 @@ export function createWebhookApp(queue: Queue) {
 						installationId,
 						timestamp,
 						branch,
-						prNumber,
 					};
 
 					await queue.add("digest", jobData, JOB_OPTIONS);
@@ -167,7 +140,6 @@ export function createWebhookApp(queue: Queue) {
 							sha: commit.id.slice(0, 7),
 							user: jobData.user,
 							branch,
-							prNumber: jobData.prNumber,
 						},
 						"Queued commit for digestion",
 					);
@@ -184,6 +156,7 @@ export function createWebhookApp(queue: Queue) {
 		});
 
 		// Handle PR opened - create PR metadata
+		// Branch-first: just store metadata, no coordination needed
 		app.on("pull_request.opened", async (context) => {
 			const { payload } = context;
 			const log = webhookLogger.child({ delivery: context.id });
@@ -203,42 +176,6 @@ export function createWebhookApp(queue: Queue) {
 					status: "open",
 					openedAt: new Date().toISOString(),
 				});
-
-				// Index branch -> PR for push event association
-				await setBranchPR(repo, branch, prNumber);
-
-				// Backfill any orphaned commits from this branch (race condition fix)
-				const orphans = await getOrphanCommits(repo, branch);
-				if (orphans.length > 0) {
-					for (const orphan of orphans) {
-						await addPRTranslation(prNumber, {
-							sha: orphan.sha,
-							summary: orphan.summary,
-							category: orphan.category,
-							significance: orphan.significance,
-							author: orphan.author,
-							timestamp: orphan.timestamp,
-						});
-					}
-
-					// Update daily index for the orphan dates
-					const dates = [
-						...new Set(orphans.map((o) => o.timestamp.split("T")[0])),
-					];
-					for (const date of dates) {
-						if (date) {
-							await addPRToDay(date, prNumber);
-						}
-					}
-
-					// Clear orphans after backfill
-					await clearOrphanCommits(repo, branch);
-
-					log.info(
-						{ repo, prNumber, branch, backfilled: orphans.length },
-						"Backfilled orphaned commits to PR",
-					);
-				}
 
 				log.info({ repo, prNumber, branch }, "PR opened, metadata stored");
 			} catch (error) {
@@ -317,7 +254,7 @@ export function createWebhookApp(queue: Queue) {
 			}
 		});
 
-		// Handle PR closed (merged or not) - update PR status and cleanup
+		// Handle PR closed (merged or not) - update PR status
 		app.on("pull_request.closed", async (context) => {
 			const { payload } = context;
 			const log = webhookLogger.child({ delivery: context.id });
@@ -326,13 +263,15 @@ export function createWebhookApp(queue: Queue) {
 				const repo = payload.repository.full_name;
 				const prNumber = payload.pull_request.number;
 				const merged = payload.pull_request.merged;
-				const branch = payload.pull_request.head.ref;
 
 				// Close PR in PR-centric storage (sets status, applies TTL, cleans up blockers if not merged)
 				await closePR(prNumber, merged);
 
-				// Clear branch-to-PR index (branch is now free for new PRs)
-				await clearBranchPR(repo, branch);
+				// Record merged PRs for daily index (used by reporter)
+				if (merged) {
+					const date = new Date().toISOString().split("T")[0] ?? "";
+					await recordPRMerged(prNumber, date);
+				}
 
 				// Also resolve blockers in legacy storage for backwards compatibility
 				const removed = await resolveBlockersForPR(repo, prNumber);

@@ -11,12 +11,12 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-// Import production Redis functions for stateful testing (PR-centric only)
+// Import production Redis functions for stateful testing (branch-first)
 import {
-	addPRToDay,
-	addPRTranslation,
+	addBranchCommit,
 	createOrUpdatePR,
 	getPRBlockers,
+	recordPRMerged,
 	resolveBlockersForPR,
 	setPRBlocker,
 	setPRStatus,
@@ -91,7 +91,7 @@ describe("E2E: Stateful Week Simulation", () => {
 
 			console.log(`\n--- ${day.toUpperCase()} (${dateStr}) ---`);
 
-			// Helper: Store translation in PR-centric model
+			// Helper: Store translation in branch-first model
 			async function storeTranslationWithPR(
 				user: string,
 				_section: "progress" | "shipped",
@@ -114,14 +114,14 @@ describe("E2E: Stateful Week Simulation", () => {
 					authors: [user],
 					status: "open",
 				});
-				await addPRToDay(dateStr, t.prNumber);
-				await addPRTranslation(t.prNumber, {
-					summary: t.summary,
-					timestamp: dateStr,
+				// No addPRToDay - handled by read-time resolution
+				await addBranchCommit("test/repo", t.branch, {
 					sha: t.sha,
-					author: user,
+					summary: t.summary,
 					category: t.category ?? null,
 					significance: t.significance ?? null,
+					author: user,
+					timestamp: dateStr,
 				});
 			}
 
@@ -184,6 +184,7 @@ describe("E2E: Stateful Week Simulation", () => {
 					const removed = await resolveBlockersForPR("test/repo", prNumber);
 					// Mark PR as merged with timestamp (removes from open-prs index)
 					await setPRStatus(prNumber, "merged", dateStr);
+					await recordPRMerged(prNumber, dateStr);
 					console.log(
 						`  PR #${prNumber} merged → ${removed} blockers resolved`,
 					);
