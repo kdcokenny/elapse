@@ -95,15 +95,6 @@ export async function simulatePRMerged(
 }
 
 /**
- * Simulate a PR being closed without merge.
- * Mirrors the pull_request.closed (merged=false) webhook handler behavior.
- * Branch-first: no branch cleanup needed.
- */
-export async function simulatePRClosed(pr: FixturePR): Promise<void> {
-	await closePR(pr.number, false);
-}
-
-/**
  * Mock translation function for tests that don't need real AI.
  * Returns a simple summary based on the commit message.
  */

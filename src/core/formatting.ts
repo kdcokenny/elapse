@@ -38,6 +38,21 @@ export interface ActivityStats {
 	branchesActive: number;
 	totalCommits: number;
 	blockerCount: number;
+	/** Number of stale review requests (3+ days) */
+	staleReviewCount: number;
+	/** Age of oldest blocker (e.g., "4 days") */
+	oldestBlockerAge?: string;
+}
+
+/**
+ * Stale review entry for the AWAITING REVIEW section.
+ */
+export interface StaleReviewEntry {
+	prNumber: number;
+	prTitle: string;
+	reviewer: string;
+	daysAgo: number;
+	repo: string;
 }
 
 /**
@@ -56,6 +71,7 @@ export function formatFeatureCentricReport(
 	blockerGroups: UserBlockerGroup[],
 	shipped: FeatureSummary[],
 	progress: BranchSummary[],
+	staleReviews: StaleReviewEntry[],
 	stats: ActivityStats,
 ): string {
 	let report = `🚀 **Daily Engineering Summary — ${formatDate(date)}**\n\n`;
@@ -64,7 +80,8 @@ export function formatFeatureCentricReport(
 	if (
 		blockerGroups.length === 0 &&
 		shipped.length === 0 &&
-		progress.length === 0
+		progress.length === 0 &&
+		staleReviews.length === 0
 	) {
 		report += `📭 **No engineering activity recorded today**\n`;
 		return report;
@@ -74,13 +91,26 @@ export function formatFeatureCentricReport(
 	if (blockerGroups.length > 0) {
 		report += `🔴 **BLOCKERS**\n\n`;
 		for (const group of blockerGroups) {
-			// Show count suffix only for users with 2+ blockers
-			const countSuffix =
-				group.blockers.length > 1 ? ` (${group.blockers.length} blockers)` : "";
-			report += `• ${group.user}${countSuffix}:\n`;
+			// Show count and oldest age for users with multiple blockers
+			let headerSuffix = "";
+			if (group.blockerCount > 1) {
+				headerSuffix = ` (${group.blockerCount} blockers`;
+				if (group.oldestAge) {
+					headerSuffix += `, oldest: ${group.oldestAge}`;
+				}
+				headerSuffix += ")";
+			}
+			report += `• ${group.user}${headerSuffix}:\n`;
 
 			for (const b of group.blockers) {
-				report += `  → ${b.description}\n`;
+				// Include age badge if available
+				const ageBadge = b.age ? ` (${b.age})` : "";
+				// Include @mentions if present
+				const mentionText =
+					b.mentionedUsers && b.mentionedUsers.length > 0
+						? ` @${b.mentionedUsers.join(", @")}`
+						: "";
+				report += `  → ${b.description}${mentionText}${ageBadge}\n`;
 				const context = b.prTitle || b.branch;
 				if (b.prNumber) {
 					const prLink = b.repo
@@ -93,6 +123,17 @@ export function formatFeatureCentricReport(
 			}
 			report += `\n`;
 		}
+	}
+
+	// AWAITING REVIEW SECTION (stale reviews - 3+ days with no response)
+	if (staleReviews.length > 0) {
+		report += `⏳ **AWAITING REVIEW** (3+ days, no response)\n\n`;
+		for (const sr of staleReviews) {
+			const prLink = `[PR #${sr.prNumber}](${buildPRUrl(sr.repo, sr.prNumber)})`;
+			const daysLabel = sr.daysAgo === 1 ? "day" : "days";
+			report += `• ${prLink}: @${sr.reviewer} requested ${sr.daysAgo} ${daysLabel} ago — ${sr.prTitle}\n`;
+		}
+		report += `\n`;
 	}
 
 	// SHIPPED SECTION (feature-centric)
@@ -146,7 +187,16 @@ export function formatFeatureCentricReport(
 	}
 	if (stats.blockerCount > 0) {
 		const label = stats.blockerCount === 1 ? "blocker" : "blockers";
-		statParts.push(`${stats.blockerCount} ${label}`);
+		// Include oldest blocker age if available
+		const oldestSuffix = stats.oldestBlockerAge
+			? ` (oldest: ${stats.oldestBlockerAge})`
+			: "";
+		statParts.push(`${stats.blockerCount} ${label}${oldestSuffix}`);
+	}
+	if (stats.staleReviewCount > 0) {
+		const label =
+			stats.staleReviewCount === 1 ? "stale review" : "stale reviews";
+		statParts.push(`${stats.staleReviewCount} ${label}`);
 	}
 	if (stats.branchesActive > 0) {
 		const label =

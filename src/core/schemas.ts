@@ -18,8 +18,6 @@ export const CommitCategorySchema = z.enum([
 	"chore", // Maintenance, deps, config
 ]);
 
-export type CommitCategory = z.infer<typeof CommitCategorySchema>;
-
 export const TranslationSchema = z.object({
 	action: z.enum(["include", "skip"]),
 	summary: z
@@ -33,8 +31,6 @@ export const TranslationSchema = z.object({
 		.nullable()
 		.describe("high=user-facing, medium=internal, low=minor"),
 });
-
-export type Translation = z.infer<typeof TranslationSchema>;
 
 // =============================================================================
 // Feature Summary Schema (replaces narrateFeature JSON parsing)
@@ -64,6 +60,10 @@ export const CommentAnalysisSchema = z.object({
 		.max(100)
 		.describe("Brief blocker description")
 		.nullable(),
+	mentionedUsers: z
+		.array(z.string())
+		.describe("GitHub usernames mentioned as blockers (without @ symbol)")
+		.default([]),
 });
 
 export type CommentAnalysisOutput = z.infer<typeof CommentAnalysisSchema>;

@@ -116,9 +116,11 @@ export interface FormatValidationResult {
  * Validate that a report follows the research document format.
  * Checks:
  * 1. Header format (Daily Engineering Summary)
- * 2. Section order (Blockers → Shipped → In Progress → Stats)
+ * 2. Section order (Blockers → Awaiting Review → Shipped → In Progress → Stats)
  * 3. No raw technical data (SHAs, diffs)
  * 4. PR traceability (PR #xxx present)
+ * 5. Age badges format (if blockers present)
+ * 6. Stale review format (if awaiting review present)
  */
 export function validateResearchFormat(report: string): FormatValidationResult {
 	const errors: string[] = [];
@@ -129,8 +131,13 @@ export function validateResearchFormat(report: string): FormatValidationResult {
 		errors.push("Missing 'Daily Engineering Summary' header");
 	}
 
-	// 2. Section order check (Blockers → Shipped → Progress → Stats)
-	const sections = ["BLOCKERS", "SHIPPED TODAY", "IN PROGRESS"];
+	// 2. Section order check (Blockers → Awaiting Review → Shipped → Progress → Stats)
+	const sections = [
+		"BLOCKERS",
+		"AWAITING REVIEW",
+		"SHIPPED TODAY",
+		"IN PROGRESS",
+	];
 	let lastIndex = -1;
 	for (const section of sections) {
 		const index = report.indexOf(section);
@@ -154,6 +161,30 @@ export function validateResearchFormat(report: string): FormatValidationResult {
 	// 4. PR traceability - if shipped section exists, check for PR refs
 	if (report.includes("SHIPPED TODAY") && !report.match(/PR #\d+/)) {
 		warnings.push("Shipped section may be missing PR references");
+	}
+
+	// 5. Age badge format check - if blockers section has multiple blockers, should have age info
+	if (report.includes("BLOCKERS")) {
+		// Check if any age badges are present (format: "(X days)" or "(today)")
+		const hasAgeBadges = report.match(/\(\d+ days?\)|(\(today\))/);
+		// Only warn if there are blockers but no age badges
+		const blockerSection = report.split("BLOCKERS")[1]?.split("**")[0] || "";
+		if (blockerSection.includes("→") && !hasAgeBadges) {
+			warnings.push(
+				"Blockers section may be missing age badges (expected format: '(X days)')",
+			);
+		}
+	}
+
+	// 6. Stale review format check - if awaiting review section exists, check format
+	if (report.includes("AWAITING REVIEW")) {
+		// Should have format: "@reviewer requested X days ago"
+		const hasStaleFormat = report.match(/@\w+ requested \d+ days? ago/);
+		if (!hasStaleFormat) {
+			warnings.push(
+				"Awaiting review section may be missing expected format: '@reviewer requested X days ago'",
+			);
+		}
 	}
 
 	return {

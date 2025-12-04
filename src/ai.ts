@@ -5,6 +5,7 @@
 
 import { google } from "@ai-sdk/google";
 import { generateObject } from "ai";
+import type { z } from "zod";
 import {
 	buildCommentAnalysisPrompt,
 	buildFeatureNarratorPrompt,
@@ -15,7 +16,6 @@ import {
 	CommentAnalysisSchema,
 	type FeatureSummaryOutput,
 	FeatureSummarySchema,
-	type Translation,
 	TranslationSchema,
 } from "./core/schemas";
 import { AIProviderError, AIProviderTimeoutError } from "./errors";
@@ -43,7 +43,7 @@ function getModel() {
 export async function translateDiff(
 	message: string,
 	diff: string,
-): Promise<Translation> {
+): Promise<z.infer<typeof TranslationSchema>> {
 	const log = aiLogger.child({ operation: "translate" });
 
 	try {
@@ -142,7 +142,7 @@ export async function analyzeComment(
 
 		// For any generation errors, return none instead of throwing
 		log.warn({ err: error }, "Comment analysis failed, defaulting to none");
-		return { action: "none", description: null };
+		return { action: "none", description: null, mentionedUsers: [] };
 	}
 }
 

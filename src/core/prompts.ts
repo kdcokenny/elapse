@@ -105,6 +105,38 @@ A BLOCKER is something preventing the PR from being merged or work from progress
 - Resource blockers ("need access to prod", "waiting for credentials")
 - Questions that must be answered before proceeding
 
+BLOCKER EXTRACTION WITH @MENTIONS:
+When analyzing comments, extract @mentioned usernames who are being waited on:
+
+1. EXPLICIT @MENTIONS WITH BLOCKING LANGUAGE
+   Look for patterns like:
+   - "waiting on @username"
+   - "blocked by @username"
+   - "need @username to review/approve/sign-off"
+   - "pending @username"
+   - "need @username's input/approval"
+
+   Extract usernames (without @) into mentionedUsers array.
+   Description: "Waiting on @username for [action]"
+
+2. EXTERNAL DEPENDENCIES (no @mention)
+   Look for patterns like:
+   - "waiting for API keys"
+   - "blocked on [external team/resource]"
+   - "need approval from [department]"
+   - "pending legal/security/design review"
+
+   Description: "Blocked on [dependency]"
+   mentionedUsers: [] (empty)
+
+3. HELP REQUESTS
+   Look for patterns like:
+   - "need help with"
+   - "stuck on"
+   - "can't figure out"
+
+   Description: "Needs help: [brief description]"
+
 A RESOLUTION is when a previously mentioned blocker is addressed:
 - "Fixed", "Resolved", "Done", "Addressed"
 - "No longer blocked", "Got access", "This is ready now"
@@ -114,8 +146,10 @@ A RESOLUTION is when a previously mentioned blocker is addressed:
 Important:
 - Most comments are NOT blockers (discussions, reviews, suggestions)
 - Only flag clear blocking statements, not minor concerns
+- Do not flag normal review requests as blockers
 - When in doubt, use action "none"
-- Description should be brief (max 15 words), only for add_blocker`;
+- Description should be brief (max 15 words), only for add_blocker
+- mentionedUsers: Array of usernames being waited on (without @ symbol), empty if none`;
 }
 
 /**

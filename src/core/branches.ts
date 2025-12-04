@@ -12,7 +12,7 @@ const MAIN_BRANCHES = (process.env.MAIN_BRANCHES || "main,master")
  * Check if a branch is considered a main/production branch.
  * Supports exact matches and wildcard patterns (e.g., "release/*").
  */
-export function isMainBranch(branch: string): boolean {
+function isMainBranch(branch: string): boolean {
 	return MAIN_BRANCHES.some((main) => {
 		if (main.includes("*")) {
 			// Convert wildcard to regex pattern

@@ -1,5 +1,4 @@
 import Redis from "ioredis";
-import type { PRBlocker } from "./core/blockers";
 import { logger } from "./logger";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
@@ -71,60 +70,6 @@ export interface StoredTranslation {
 	prNumber?: number;
 	prTitle?: string;
 	sha: string;
-}
-
-// Persistent blocker storage (for comment-based blockers that persist across days)
-
-const PERSISTENT_BLOCKERS_KEY = `${KEY_PREFIX}:blockers:active`;
-const PERSISTENT_BLOCKERS_TTL = 30 * 24 * 60 * 60; // 30 days
-
-/**
- * Remove all blockers for a PR (called on merge or AI resolution).
- * Returns the number of blockers removed.
- */
-export async function resolveBlockersForPR(
-	_repo: string,
-	prNumber: number,
-): Promise<number> {
-	const client = getRedis();
-	const all = await client.hgetall(PERSISTENT_BLOCKERS_KEY);
-	let removed = 0;
-
-	for (const [id, _value] of Object.entries(all)) {
-		// Keys are in format "prNumber:commentId"
-		if (id.startsWith(`${prNumber}:`)) {
-			await client.hdel(PERSISTENT_BLOCKERS_KEY, id);
-			removed++;
-		}
-	}
-
-	return removed;
-}
-
-/**
- * Store a review-based blocker (from pull_request_review events).
- * Key format: prNumber:review:reviewer
- */
-export async function storeReviewBlocker(blocker: PRBlocker): Promise<void> {
-	if (!blocker.reviewer) return;
-	const id = `${blocker.prNumber}:review:${blocker.reviewer}`;
-	const client = getRedis();
-	await client.hset(PERSISTENT_BLOCKERS_KEY, id, JSON.stringify(blocker));
-	await client.expire(PERSISTENT_BLOCKERS_KEY, PERSISTENT_BLOCKERS_TTL);
-}
-
-/**
- * Remove a review blocker for a specific reviewer on a PR.
- * Called when a reviewer approves or their review is dismissed.
- */
-export async function resolveReviewBlocker(
-	prNumber: number,
-	reviewer: string,
-): Promise<boolean> {
-	const id = `${prNumber}:review:${reviewer}`;
-	const client = getRedis();
-	const removed = await client.hdel(PERSISTENT_BLOCKERS_KEY, id);
-	return removed > 0;
 }
 
 // ============================================================================
@@ -201,12 +146,15 @@ export interface PRBlockerEntry {
 		| "pending_review"
 		| "comment"
 		| "label"
-		| "description";
+		| "description"
+		| "stale_review";
 	description: string;
 	reviewer?: string;
 	commentId?: number;
 	detectedAt: string;
 	resolvedAt?: string;
+	/** GitHub usernames mentioned as blockers (Layer 2: AI @mention extraction) */
+	mentionedUsers?: string[];
 }
 
 // Key generators for PR-centric storage
@@ -391,15 +339,25 @@ export async function setPRBlocker(
 }
 
 /**
- * Remove a blocker from a PR.
+ * Mark a blocker as resolved by setting resolvedAt timestamp.
+ * This preserves the blocker for historical tracking until cleanup runs.
+ * Returns true if the blocker existed and was updated.
  */
-export async function removePRBlocker(
+export async function resolvePRBlocker(
 	prNumber: number,
 	blockerKey: string,
 ): Promise<boolean> {
 	const client = getRedis();
-	const removed = await client.hdel(prBlockersKey(prNumber), blockerKey);
-	return removed > 0;
+	const key = prBlockersKey(prNumber);
+
+	const existing = await client.hget(key, blockerKey);
+	if (!existing) return false;
+
+	const blocker = JSON.parse(existing) as PRBlockerEntry;
+	blocker.resolvedAt = new Date().toISOString();
+
+	await client.hset(key, blockerKey, JSON.stringify(blocker));
+	return true;
 }
 
 /**
@@ -417,6 +375,42 @@ export async function getPRBlockers(
 	}
 
 	return result;
+}
+
+/** TTL for resolved blockers before cleanup (7 days) */
+const RESOLVED_BLOCKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Cleanup resolved blockers older than 7 days.
+ * Called after daily report to prevent blocker accumulation.
+ * Returns count of deleted entries.
+ */
+export async function cleanupResolvedBlockers(): Promise<number> {
+	const client = getRedis();
+	const cutoff = Date.now() - RESOLVED_BLOCKER_TTL_MS;
+	let deletedCount = 0;
+
+	// Get all open PR numbers
+	const prNumbers = await client.smembers(openPRsIndexKey());
+
+	for (const prNumStr of prNumbers) {
+		const prNumber = Number.parseInt(prNumStr, 10);
+		const key = prBlockersKey(prNumber);
+		const raw = await client.hgetall(key);
+
+		for (const [blockerKey, value] of Object.entries(raw)) {
+			const blocker = JSON.parse(value) as PRBlockerEntry;
+			if (blocker.resolvedAt) {
+				const resolvedTime = new Date(blocker.resolvedAt).getTime();
+				if (resolvedTime < cutoff) {
+					await client.hdel(key, blockerKey);
+					deletedCount++;
+				}
+			}
+		}
+	}
+
+	return deletedCount;
 }
 
 // ============================================================================

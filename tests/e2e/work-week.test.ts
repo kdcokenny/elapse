@@ -5,9 +5,82 @@
  * Uses ioredis-mock for stateful week simulation where:
  * - State persists across days (like production Redis)
  * - Translations are stored via PR-centric storage
- * - Blockers persist until PR merge via resolveBlockersForPR()
+ * - Blockers persist until PR merge (TTL applied on merge)
  * - Reports generated via generateReport()
  * - Real AI calls for feature narration
+ *
+ * ============================================================================
+ * EXPECTED OUTPUT FORMAT (for manual verification)
+ * ============================================================================
+ *
+ * MONDAY (2025-02-24):
+ * ```
+ * 🚀 **Daily Engineering Summary — Monday, February 24, 2025**
+ *
+ * 🔴 **BLOCKERS**
+ *
+ * • carol (2 blockers, oldest: 6 days):
+ *   → Labeled: blocked (4 days)
+ *     [PR #201]: feat: Add payment processing flow
+ *   → Waiting for API keys from finance team (6 days)
+ *     [PR #201]: feat: Add payment processing flow
+ *
+ * • dave (2 blockers, oldest: 5 days):
+ *   → Waiting on review from @carol (5 days)
+ *     [PR #202]: fix: Rate limiter bypass vulnerability
+ *   → Needs @eve for security review (3 days)
+ *     [PR #202]: fix: Rate limiter bypass vulnerability
+ *
+ * ⏳ **AWAITING REVIEW** (3+ days, no response)
+ *
+ * • [PR #202]: @carol requested 5 days ago — fix: Rate limiter bypass vulnerability
+ *
+ * 📍 **IN PROGRESS**
+ *
+ * • [AI-generated feature name]
+ *   → [AI-generated impact]
+ *   → alice • [PR #101]
+ *
+ * • Add payment processing flow
+ *   → Started Stripe payment integration with initial SDK setup
+ *   → carol • [PR #201]
+ *
+ * • Rate limiter bypass vulnerability
+ *   → Patched rate limiter bypass vulnerability in token validation
+ *   → dave • [PR #202]
+ *
+ * 📊 4 blockers (oldest: 6 days) • 1 stale review • 3 features in progress
+ * ```
+ *
+ * TUESDAY (2025-02-25):
+ * - 7 blockers total (carol: 3, dave: 2, alice: 1, bob: 1)
+ * - 1 stale review (@carol on PR #202, 6 days)
+ * - 4 features in progress
+ * - New blockers show "(today)" for same-day detection
+ *
+ * WEDNESDAY (2025-02-26):
+ * - PR #202 merged → dave's blockers resolved
+ * - 5 blockers remaining (carol: 3, alice: 1, bob: 1)
+ * - 🚢 SHIPPED TODAY section appears with dave's security fix
+ * - Ages increment: "(5 days)" → "(6 days)", etc.
+ *
+ * THURSDAY (2025-02-27):
+ * - PR #101 and PR #201 merged
+ * - 1 blocker remaining (bob waiting on alice, 2 days)
+ * - 🚢 SHIPPED TODAY: alice's auth + carol's payment
+ * - 1 feature in progress (bob's docs)
+ *
+ * FRIDAY (2025-02-28):
+ * - PR #102 merged → all blockers resolved
+ * - Clean report: only SHIPPED TODAY section
+ * - 📊 1 PR merged (no blockers, no stale reviews)
+ *
+ * KEY FORMAT REQUIREMENTS:
+ * - Age badges on each blocker: "(X days)" or "(today)"
+ * - User grouping with count: "carol (3 blockers, oldest: 8 days):"
+ * - AWAITING REVIEW section for stale reviews (3+ days)
+ * - Stats footer: "X blockers (oldest: Y days) • Z stale reviews • N features in progress"
+ * - Section order: BLOCKERS → AWAITING REVIEW → SHIPPED → IN PROGRESS → stats
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -17,7 +90,6 @@ import {
 	createOrUpdatePR,
 	getPRBlockers,
 	recordPRMerged,
-	resolveBlockersForPR,
 	setPRBlocker,
 	setPRStatus,
 } from "../../src/redis";
@@ -39,6 +111,9 @@ const WORK_DAYS: WorkDay[] = [
 	"friday",
 ];
 
+// Store original Date.now for restoration after tests
+const originalDateNow = Date.now;
+
 describe("E2E: Stateful Week Simulation", () => {
 	beforeAll(() => {
 		// Initialize mock Redis for all tests
@@ -46,7 +121,8 @@ describe("E2E: Stateful Week Simulation", () => {
 	});
 
 	afterAll(() => {
-		// Restore original Redis client
+		// Restore original Date.now and Redis client
+		Date.now = originalDateNow;
 		restoreRedis();
 	});
 
@@ -173,25 +249,24 @@ describe("E2E: Stateful Week Simulation", () => {
 						description: blocker.description,
 						reviewer: blocker.reviewer,
 						commentId: blocker.commentId,
-						detectedAt: dateStr,
+						detectedAt: blocker.detectedAt ?? dateStr,
 					});
 				}
 			}
 
-			// Step 3: Resolve blockers for merged PRs and update PR status
+			// Step 3: Update PR status and record merge for merged PRs
 			if (dayData.mergedPRs && dayData.mergedPRs.length > 0) {
 				for (const prNumber of dayData.mergedPRs) {
-					const removed = await resolveBlockersForPR("test/repo", prNumber);
-					// Mark PR as merged with timestamp (removes from open-prs index)
+					// Mark PR as merged with timestamp (removes from open-prs index, applies TTL)
 					await setPRStatus(prNumber, "merged", dateStr);
 					await recordPRMerged(prNumber, dateStr);
-					console.log(
-						`  PR #${prNumber} merged → ${removed} blockers resolved`,
-					);
+					console.log(`  PR #${prNumber} merged`);
 				}
 			}
 
 			// Step 4: Generate report using PR-centric model
+			// Mock Date.now() to return end of report day for realistic age calculations
+			Date.now = () => new Date(`${dateStr}T23:59:59Z`).getTime();
 			const { content: report } = await generateReport(dateStr);
 			console.log(`\n--- ${day.toUpperCase()} REPORT ---`);
 			console.log(report ?? "(no report generated)");
@@ -254,13 +329,10 @@ describe("E2E: Stateful Week Simulation", () => {
 			expect(tuesdayBlockers.size).toBeGreaterThanOrEqual(0);
 		}
 
-		// Day 3: Resolve the blocker by PR merge
+		// Day 3: Resolve the blocker by PR merge (TTL applied to blockers)
 		if (persistentBlocker && persistentBlocker.prNumber !== undefined) {
-			const removed = await resolveBlockersForPR(
-				"test/repo",
-				persistentBlocker.prNumber,
-			);
-			expect(removed).toBeGreaterThanOrEqual(0);
+			await setPRStatus(persistentBlocker.prNumber, "merged");
+			// Blockers are retained with TTL for historical tracking
 		}
 	});
 });

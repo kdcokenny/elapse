@@ -84,25 +84,10 @@ export function listAvailableRepos(): string[] {
 }
 
 /**
- * Load all fixtures for a repo across all available dates.
- */
-export function loadAllRepoFixtures(repo: string): DailyFixture[] {
-	const dates = listAvailableDates(repo);
-	return dates.map((date) => loadDailyFixture(repo, date));
-}
-
-/**
  * Get all included commits from a fixture (filtered by filterResult.included).
  */
 export function getIncludedCommits(fixture: DailyFixture): FixtureCommit[] {
 	return fixture.commits.filter((c) => c.filterResult.included);
-}
-
-/**
- * Get commits that have associated PRs.
- */
-export function getCommitsWithPRs(fixture: DailyFixture): FixtureCommit[] {
-	return fixture.commits.filter((c) => c.associatedPR !== undefined);
 }
 
 /**

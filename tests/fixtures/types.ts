@@ -3,11 +3,31 @@
  * These define the schema for persisted commit data from GitHub.
  */
 
-import type { PRBlocker } from "../../src/core/blockers";
 import type { StoredTranslation } from "../../src/redis";
 
 // Re-export for convenience
-export type { PRBlocker, StoredTranslation };
+export type { StoredTranslation };
+
+/**
+ * Blocker data for test fixtures.
+ * Represents a blocker state at a point in time.
+ */
+export interface FixtureBlocker {
+	type:
+		| "changes_requested"
+		| "pending_review"
+		| "label"
+		| "description"
+		| "comment";
+	description: string;
+	reviewer?: string;
+	prNumber?: number;
+	prTitle?: string;
+	branch: string;
+	user: string;
+	commentId?: number;
+	detectedAt?: string;
+}
 
 /**
  * PR comment for fixture.
@@ -181,8 +201,16 @@ export interface ProductionDayFixture {
 	shipped: Record<string, StoredTranslation[]>;
 	/** In-progress translations grouped by user (matches Redis storage). */
 	progress: Record<string, StoredTranslation[]>;
-	/** Blockers for the day (matches PRBlocker[]). */
-	blockers: PRBlocker[];
+	/** Blockers for the day. */
+	blockers: FixtureBlocker[];
+	/** Stale review entries for AWAITING REVIEW section. */
+	staleReviews?: Array<{
+		prNumber: number;
+		prTitle: string;
+		reviewer: string;
+		daysAgo: number;
+		repo: string;
+	}>;
 	/** Expected outcomes for assertions. */
 	expectations: DayExpectations;
 	/** Mock AI responses for narrateFeature() - keyed by PR number. */

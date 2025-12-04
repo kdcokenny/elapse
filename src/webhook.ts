@@ -13,11 +13,8 @@ import {
 	closePR,
 	createOrUpdatePR,
 	recordPRMerged,
-	removePRBlocker,
-	resolveBlockersForPR,
-	resolveReviewBlocker,
+	resolvePRBlocker,
 	setPRBlocker,
-	storeReviewBlocker,
 } from "./redis";
 
 export interface DigestJob {
@@ -273,11 +270,8 @@ export function createWebhookApp(queue: Queue) {
 					await recordPRMerged(prNumber, date);
 				}
 
-				// Also resolve blockers in legacy storage for backwards compatibility
-				const removed = await resolveBlockersForPR(repo, prNumber);
-
 				log.info(
-					{ repo, prNumber, merged, blockerCount: removed },
+					{ repo, prNumber, merged },
 					merged ? "PR merged, data archived" : "PR closed, data cleaned up",
 				);
 			} catch (error) {
@@ -295,9 +289,6 @@ export function createWebhookApp(queue: Queue) {
 				try {
 					const repo = payload.repository.full_name;
 					const prNumber = payload.pull_request.number;
-					const prTitle = payload.pull_request.title;
-					const branch = payload.pull_request.head.ref;
-					const prAuthor = payload.pull_request.user?.login ?? "unknown";
 					const reviewer = payload.review.user?.login;
 					const reviewState = payload.review.state;
 
@@ -317,50 +308,28 @@ export function createWebhookApp(queue: Queue) {
 								detectedAt: new Date().toISOString(),
 							});
 
-							// Also store in legacy storage for backwards compatibility
-							await storeReviewBlocker({
-								type: "changes_requested",
-								description: `Changes requested by @${reviewer}`,
-								reviewer,
-								prNumber,
-								prTitle,
-								branch,
-								user: prAuthor,
-								detectedAt: new Date().toISOString(),
-							});
-
 							log.info(
 								{ repo, prNumber, reviewer },
 								"Stored changes_requested blocker from review",
 							);
 						} else if (reviewState === "approved") {
-							// Resolve this reviewer's blocker in PR-centric storage
-							await removePRBlocker(prNumber, `review:${reviewer}`);
-
-							// Also resolve in legacy storage
-							const resolved = await resolveReviewBlocker(prNumber, reviewer);
-							if (resolved) {
-								log.info(
-									{ repo, prNumber, reviewer },
-									"Resolved blocker after approval",
-								);
-							}
+							// Resolve this reviewer's blocker in PR-centric storage (soft delete)
+							await resolvePRBlocker(prNumber, `review:${reviewer}`);
+							log.info(
+								{ repo, prNumber, reviewer },
+								"Resolved blocker after approval",
+							);
 						}
 					}
 
 					// Handle review dismissed
 					if (payload.action === "dismissed") {
-						// Remove from PR-centric storage
-						await removePRBlocker(prNumber, `review:${reviewer}`);
-
-						// Also remove from legacy storage
-						const resolved = await resolveReviewBlocker(prNumber, reviewer);
-						if (resolved) {
-							log.info(
-								{ repo, prNumber, reviewer },
-								"Resolved blocker after review dismissed",
-							);
-						}
+						// Resolve in PR-centric storage (soft delete with resolvedAt)
+						await resolvePRBlocker(prNumber, `review:${reviewer}`);
+						log.info(
+							{ repo, prNumber, reviewer },
+							"Resolved blocker after review dismissed",
+						);
 					}
 				} catch (error) {
 					log.error({ err: error }, "Failed to process review event");
@@ -402,11 +371,11 @@ export function createWebhookApp(queue: Queue) {
 							"Stored label blocker",
 						);
 					} else if (payload.action === "unlabeled") {
-						await removePRBlocker(prNumber, `label:${label.name}`);
+						await resolvePRBlocker(prNumber, `label:${label.name}`);
 
 						log.info(
 							{ repo, prNumber, label: label.name },
-							"Removed label blocker",
+							"Resolved label blocker",
 						);
 					}
 				} catch (error) {
@@ -444,8 +413,8 @@ export function createWebhookApp(queue: Queue) {
 						"Stored description blocker",
 					);
 				} else {
-					// Remove any existing description blocker if section was removed
-					await removePRBlocker(prNumber, "description");
+					// Resolve any existing description blocker if section was removed
+					await resolvePRBlocker(prNumber, "description");
 
 					log.debug({ repo, prNumber }, "No description blocker found");
 				}
@@ -483,11 +452,11 @@ export function createWebhookApp(queue: Queue) {
 								"Stored pending review blocker",
 							);
 						} else if (payload.action === "review_request_removed") {
-							await removePRBlocker(prNumber, `pending:${reviewer}`);
+							await resolvePRBlocker(prNumber, `pending:${reviewer}`);
 
 							log.info(
 								{ repo, prNumber, reviewer },
-								"Removed pending review blocker",
+								"Resolved pending review blocker",
 							);
 						}
 					}
@@ -509,11 +478,11 @@ export function createWebhookApp(queue: Queue) {
 								"Stored pending team review blocker",
 							);
 						} else if (payload.action === "review_request_removed") {
-							await removePRBlocker(prNumber, `pending:team:${teamSlug}`);
+							await resolvePRBlocker(prNumber, `pending:team:${teamSlug}`);
 
 							log.info(
 								{ repo, prNumber, team: teamSlug },
-								"Removed pending team review blocker",
+								"Resolved pending team review blocker",
 							);
 						}
 					}

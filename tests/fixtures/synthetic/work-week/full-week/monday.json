@@ -51,7 +51,8 @@
 			"prNumber": 201,
 			"prTitle": "feat: Add payment processing flow",
 			"branch": "feature/payment-flow",
-			"user": "carol"
+			"user": "carol",
+			"detectedAt": "2025-02-20T10:00:00Z"
 		},
 		{
 			"type": "description",
@@ -59,25 +60,44 @@
 			"prNumber": 201,
 			"prTitle": "feat: Add payment processing flow",
 			"branch": "feature/payment-flow",
-			"user": "carol"
+			"user": "carol",
+			"detectedAt": "2025-02-18T14:00:00Z"
 		},
 		{
 			"type": "pending_review",
-			"description": "Waiting on: carol, eve",
+			"description": "Waiting on review from @carol",
 			"reviewer": "carol",
 			"prNumber": 202,
 			"prTitle": "fix: Rate limiter bypass vulnerability",
 			"branch": "fix/rate-limiter",
-			"user": "dave"
+			"user": "dave",
+			"detectedAt": "2025-02-19T09:00:00Z"
 		},
 		{
 			"type": "comment",
-			"description": "Need security review before merging",
+			"description": "Needs @eve for security review",
 			"commentId": 101,
 			"prNumber": 202,
 			"prTitle": "fix: Rate limiter bypass vulnerability",
 			"branch": "fix/rate-limiter",
-			"user": "dave"
+			"user": "dave",
+			"detectedAt": "2025-02-21T11:00:00Z"
+		}
+	],
+	"staleReviews": [
+		{
+			"prNumber": 101,
+			"prTitle": "feat: Add user authentication v2",
+			"reviewer": "jane",
+			"daysAgo": 4,
+			"repo": "test-org/test-repo"
+		},
+		{
+			"prNumber": 102,
+			"prTitle": "docs: Update API documentation",
+			"reviewer": "bob",
+			"daysAgo": 3,
+			"repo": "test-org/test-repo"
 		}
 	],
 	"mergedPRs": [],

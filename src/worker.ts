@@ -15,7 +15,7 @@ import {
 	addDirectCommit,
 	getPRBlockers,
 	redis,
-	removePRBlocker,
+	resolvePRBlocker,
 	setPRBlocker,
 } from "./redis";
 import { processReportJob, type ReportJob } from "./reporter";
@@ -220,27 +220,34 @@ async function processCommentJob(
 		});
 
 		if (result.action === "add_blocker" && result.description) {
-			// Store the blocker in PR-centric storage
+			// Store the blocker in PR-centric storage (with @mentions if extracted)
 			await setPRBlocker(prNumber, `comment:${commentId}`, {
 				type: "comment",
 				description: result.description,
 				commentId,
 				detectedAt: new Date().toISOString(),
+				mentionedUsers: result.mentionedUsers || [],
 			});
 
 			log.info(
-				{ description: result.description },
+				{
+					description: result.description,
+					mentionedUsers: result.mentionedUsers,
+				},
 				"Blocker detected from comment",
 			);
 		} else if (result.action === "resolve_blocker") {
-			// Remove all blockers from PR-centric storage when a resolution is detected
+			// Mark all blockers as resolved (soft delete with resolvedAt)
 			const blockers = await getPRBlockers(prNumber);
-			for (const [key] of blockers) {
-				await removePRBlocker(prNumber, key);
+			for (const [key, blocker] of blockers) {
+				// Skip already-resolved blockers
+				if (!blocker.resolvedAt) {
+					await resolvePRBlocker(prNumber, key);
+				}
 			}
 
 			log.info(
-				{ prBlockersRemoved: blockers.size },
+				{ prBlockersResolved: blockers.size },
 				"Blockers resolved from comment",
 			);
 		} else {

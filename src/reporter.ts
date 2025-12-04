@@ -18,14 +18,9 @@ import { getWatermark } from "./core/watermark";
 import { DiscordWebhookError } from "./errors";
 import { reportLogger } from "./logger";
 import {
-	deleteBranchCommits,
-	getAllBranchKeys,
-	getAllOpenPRNumbers,
+	cleanupResolvedBlockers,
 	getAllPRDataForDate,
-	getBranchCommits,
 	getLastReportTimestamp,
-	getPRMetadata,
-	parseBranchKey,
 	setLastReportTimestamp,
 } from "./redis";
 
@@ -33,6 +28,24 @@ const DISCORD_TIMEOUT_MS = 10000;
 
 // Enable in-progress section via env
 const SHOW_IN_PROGRESS = process.env.SHOW_IN_PROGRESS !== "false";
+
+// Stale review detection configuration
+const STALE_REVIEW_DAYS = Number.parseInt(
+	process.env.STALE_REVIEW_DAYS || "3",
+	10,
+);
+
+/**
+ * Stale review entry for the AWAITING REVIEW section.
+ */
+export interface StaleReview {
+	prNumber: number;
+	prTitle: string;
+	reviewer: string;
+	reviewerType: "user" | "team";
+	daysAgo: number;
+	repo: string;
+}
 
 export interface ReportJob {
 	type: "daily";
@@ -77,6 +90,72 @@ async function sendToDiscord(content: string): Promise<void> {
 	}
 
 	reportLogger.info("Report sent to Discord");
+}
+
+/**
+ * Detect stale review requests (pending_review blockers older than threshold).
+ * A review is stale if:
+ * 1. Requested >= STALE_REVIEW_DAYS ago
+ * 2. PR is not a draft (excluded via label check)
+ * 3. PR doesn't have no-rush/wip/draft labels
+ */
+function detectStaleReviews(
+	openPRs: Map<
+		number,
+		{
+			meta: { title: string; repo: string };
+			blockers: Map<
+				string,
+				{
+					type: string;
+					reviewer?: string;
+					detectedAt: string;
+					resolvedAt?: string;
+				}
+			>;
+		}
+	>,
+): StaleReview[] {
+	const staleReviews: StaleReview[] = [];
+	const now = Date.now();
+	const staleThresholdMs = STALE_REVIEW_DAYS * 24 * 60 * 60 * 1000;
+
+	for (const [prNumber, pr] of openPRs) {
+		for (const [key, blocker] of pr.blockers) {
+			// Only check pending_review blockers
+			if (blocker.type !== "pending_review") continue;
+
+			// Skip already-resolved blockers
+			if (blocker.resolvedAt) continue;
+
+			// Must have detectedAt timestamp
+			if (!blocker.detectedAt) continue;
+
+			const requestedAt = new Date(blocker.detectedAt).getTime();
+			const ageMs = now - requestedAt;
+
+			// Check if stale (>= threshold)
+			if (ageMs < staleThresholdMs) continue;
+
+			const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+			const isTeam = key.includes("pending:team:");
+			const reviewer = blocker.reviewer || key.replace(/^pending:(team:)?/, "");
+
+			staleReviews.push({
+				prNumber,
+				prTitle: pr.meta.title,
+				reviewer,
+				reviewerType: isTeam ? "team" : "user",
+				daysAgo,
+				repo: pr.meta.repo,
+			});
+		}
+	}
+
+	// Sort by days (oldest first)
+	staleReviews.sort((a, b) => b.daysAgo - a.daysAgo);
+
+	return staleReviews;
 }
 
 /**
@@ -192,8 +271,27 @@ async function generateReport(
 					prNumber,
 					prTitle: pr.meta.title,
 					repo: pr.meta.repo,
+					detectedAt: blocker.detectedAt,
+					mentionedUsers: blocker.mentionedUsers,
 				});
 			}
+		}
+	}
+
+	// Detect stale reviews (pending_review blockers >= 3 days old)
+	const staleReviews = detectStaleReviews(data.openPRs);
+
+	// Group blockers by user (calculates ages automatically)
+	const blockerGroups = groupBlockersByUser(blockersSummary);
+
+	// Calculate oldest blocker age from groups
+	let oldestBlockerAge: string | undefined;
+	for (const group of blockerGroups) {
+		if (
+			group.oldestAge &&
+			(!oldestBlockerAge || group.oldestAge > oldestBlockerAge)
+		) {
+			oldestBlockerAge = group.oldestAge;
 		}
 	}
 
@@ -206,26 +304,27 @@ async function generateReport(
 			progressSummaries.reduce((sum, p) => sum + p.commitCount, 0) +
 			data.directCommits.length,
 		blockerCount: blockersSummary.length,
+		staleReviewCount: staleReviews.length,
+		oldestBlockerAge,
 	};
 
 	// No meaningful activity
 	if (
 		featureSummaries.length === 0 &&
 		progressSummaries.length === 0 &&
-		blockersSummary.length === 0
+		blockersSummary.length === 0 &&
+		staleReviews.length === 0
 	) {
 		log.info("No activity to report for date");
 		return { content: formatNoActivityReport(date), watermark };
 	}
-
-	// Group blockers by user for consolidated display
-	const blockerGroups = groupBlockersByUser(blockersSummary);
 
 	const report = formatFeatureCentricReport(
 		date,
 		blockerGroups,
 		featureSummaries,
 		progressSummaries,
+		staleReviews,
 		stats,
 	);
 
@@ -278,6 +377,12 @@ async function processReportJob(
 		await setLastReportTimestamp(watermark);
 		log.info({ watermark }, "Report watermark updated");
 
+		// Cleanup old resolved blockers (7+ days since resolution)
+		const cleanedCount = await cleanupResolvedBlockers();
+		if (cleanedCount > 0) {
+			log.info({ cleanedCount }, "Purged old resolved blockers");
+		}
+
 		return { sent: true };
 	} catch (error) {
 		log.error({ err: error }, "Report job failed");
@@ -315,80 +420,6 @@ export async function setupReportScheduler(queue: Queue): Promise<void> {
 		{ schedule, timezone },
 		"Daily report scheduler configured",
 	);
-}
-
-// ============================================================================
-// Branch Cleanup (Background Job)
-// ============================================================================
-
-const STALE_BRANCH_DAYS = 14;
-
-/**
- * Clean up stale branch commits.
- * A branch is stale if:
- * 1. No commits in the last 14 days AND
- * 2. No open PR references this branch
- *
- * This runs as part of the report scheduler (off-peak hours).
- */
-export async function cleanupStaleBranches(): Promise<{
-	scanned: number;
-	deleted: number;
-}> {
-	const log = reportLogger.child({ component: "cleanup" });
-	log.info("Starting stale branch cleanup");
-
-	const branchKeys = await getAllBranchKeys();
-	const openPRNumbers = await getAllOpenPRNumbers();
-
-	// Build set of branches with open PRs
-	const branchesWithOpenPRs = new Set<string>();
-	for (const prNumber of openPRNumbers) {
-		const meta = await getPRMetadata(prNumber);
-		if (meta) {
-			branchesWithOpenPRs.add(`${meta.repo}:${meta.branch}`);
-		}
-	}
-
-	const now = Date.now();
-	const staleThreshold = now - STALE_BRANCH_DAYS * 24 * 60 * 60 * 1000;
-	let deleted = 0;
-
-	for (const key of branchKeys) {
-		const parsed = parseBranchKey(key);
-		if (!parsed) continue;
-
-		const { repo, branch } = parsed;
-		const branchId = `${repo}:${branch}`;
-
-		// Skip branches with open PRs
-		if (branchesWithOpenPRs.has(branchId)) {
-			continue;
-		}
-
-		// Check last commit timestamp
-		const commits = await getBranchCommits(repo, branch);
-		if (commits.length === 0) {
-			// Empty branch, delete it
-			await deleteBranchCommits(repo, branch);
-			deleted++;
-			continue;
-		}
-
-		// Find most recent commit
-		const lastCommitTime = Math.max(
-			...commits.map((c) => new Date(c.timestamp).getTime()),
-		);
-
-		if (lastCommitTime < staleThreshold) {
-			await deleteBranchCommits(repo, branch);
-			deleted++;
-			log.debug({ repo, branch, lastCommitTime }, "Deleted stale branch");
-		}
-	}
-
-	log.info({ scanned: branchKeys.length, deleted }, "Branch cleanup complete");
-	return { scanned: branchKeys.length, deleted };
 }
 
 // Export for testing and worker integration
