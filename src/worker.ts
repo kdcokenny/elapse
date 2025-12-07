@@ -7,8 +7,9 @@ import { Octokit } from "@octokit/rest";
 import { type Job, UnrecoverableError, Worker } from "bullmq";
 import { analyzeComment, translateDiff } from "./ai";
 import { classifyBranch } from "./core/branches";
+import { stripOversizedFiles } from "./core/diff";
 import { getPrivateKey } from "./credentials";
-import { DiffTooLargeError, GitHubAPIError, NonRetryableError } from "./errors";
+import { GitHubAPIError, NonRetryableError } from "./errors";
 import { workerLogger } from "./logger";
 import {
 	addBranchCommit,
@@ -21,8 +22,8 @@ import {
 import { processReportJob, type ReportJob } from "./reporter";
 import type { CommentJob, DigestJob } from "./webhook";
 
-const MAX_DIFF_SIZE = 100000; // 100KB - skip larger diffs
 const QUEUE_NAME = "elapse";
+const LARGE_DIFF_WARNING_SIZE = 200000; // 200KB - log warning for very large diffs
 
 // Type guard for errors with HTTP status
 function hasStatus(error: unknown): error is { status: number } {
@@ -109,21 +110,30 @@ async function processDigestJob(
 		const octokit = getOctokit(installationId);
 
 		// Fetch diff
-		const diff = await fetchDiff(octokit, owner, repoName, sha);
+		const rawDiff = await fetchDiff(octokit, owner, repoName, sha);
 
-		// Check diff size
-		if (diff.length > MAX_DIFF_SIZE) {
-			log.warn({ diffSize: diff.length }, "Diff too large, skipping");
-			throw new DiffTooLargeError(diff.length, MAX_DIFF_SIZE);
-		}
-
-		if (!diff || diff.length === 0) {
+		if (!rawDiff || rawDiff.length === 0) {
 			log.debug("Empty diff, skipping");
 			return { translation: "SKIP", section };
 		}
 
+		// Log warning for very large diffs
+		if (rawDiff.length > LARGE_DIFF_WARNING_SIZE) {
+			log.warn(
+				{ diffSize: rawDiff.length },
+				"Large diff, will be truncated for AI",
+			);
+		}
+
+		// Strip oversized files (>50KB per file) before AI processing
+		const { filteredDiff, strippedFiles } = stripOversizedFiles(rawDiff);
+
+		if (strippedFiles.length > 0) {
+			log.info({ strippedFiles }, "Stripped oversized files from diff");
+		}
+
 		// Translate diff to business value
-		const result = await translateDiff(message, diff);
+		const result = await translateDiff(message, filteredDiff);
 
 		log.debug({ result }, "Translation result");
 

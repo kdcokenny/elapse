@@ -42,9 +42,3 @@ export class AIProviderTimeoutError extends AIProviderError {
 }
 
 export class DiscordWebhookError extends RetryableError {}
-
-export class DiffTooLargeError extends NonRetryableError {
-	constructor(size: number, maxSize: number) {
-		super(`Diff size ${size} exceeds maximum ${maxSize}`);
-	}
-}

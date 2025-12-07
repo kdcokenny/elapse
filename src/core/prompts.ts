@@ -5,7 +5,7 @@
 
 import { isVagueMessage } from "./filters";
 
-const MAX_DIFF_SIZE = 8000; // Characters to send to AI
+const MAX_DIFF_SIZE = 256000; // ~64K tokens, generous for 1M context window
 
 /**
  * Truncate a diff to a reasonable size for AI processing.

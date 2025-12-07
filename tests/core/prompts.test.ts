@@ -16,13 +16,14 @@ describe("truncateDiff", () => {
 	});
 
 	test("truncates large diffs", () => {
-		const diff = "a".repeat(10000);
+		// MAX_DIFF_SIZE is 256000 (256KB), so we need a larger diff
+		const diff = "a".repeat(300000);
 		const result = truncateDiff(diff);
 
 		expect(result.wasTruncated).toBe(true);
 		expect(result.truncated.length).toBeLessThan(diff.length);
 		expect(result.truncated).toContain("[... diff truncated ...]");
-		expect(result.originalSize).toBe(10000);
+		expect(result.originalSize).toBe(300000);
 	});
 });
 
