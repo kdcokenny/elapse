@@ -740,7 +740,7 @@ export async function getAllPRDataForDate(
 		const isMergedInWindow = sinceTimestamp
 			? meta.status === "merged" &&
 				meta.mergedAt &&
-				meta.mergedAt >= sinceTimestamp
+				meta.mergedAt > sinceTimestamp
 			: meta.status === "merged" && meta.mergedAt?.startsWith(date);
 
 		if (isMergedInWindow) {
