@@ -78,12 +78,15 @@ export function setRedisClient(client: Redis): () => void {
 }
 
 // Export for backwards compatibility (BullMQ needs direct access)
-// Lazily initialized - will throw in test environment if accessed directly
-export const redis = new Proxy({} as Redis, {
-	get(_, prop) {
-		return Reflect.get(getProductionRedis(), prop);
-	},
-});
+// BullMQ dynamically registers Lua script methods on the Redis client instance,
+// so we must provide a real ioredis instance (not a Proxy or lazy wrapper).
+// Tests must call setRedisClient() before importing modules that use this.
+export const redis: Redis = (() => {
+	if (IS_TEST) {
+		return null as unknown as Redis;
+	}
+	return getProductionRedis();
+})();
 
 // Redis key helpers
 
