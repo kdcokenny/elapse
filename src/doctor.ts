@@ -10,6 +10,7 @@ import { google } from "@ai-sdk/google";
 import { createAppAuth } from "@octokit/auth-app";
 import { generateText } from "ai";
 import Redis from "ioredis";
+import { DEFAULT_REDIS_URL } from "./config";
 import { getCredentials } from "./credentials";
 
 // =============================================================================
@@ -62,7 +63,7 @@ function prompt(question: string): Promise<string> {
  * Check Redis connectivity by sending PING.
  */
 async function checkRedis(): Promise<CheckResult> {
-	const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
+	const redisUrl = process.env.REDIS_URL || DEFAULT_REDIS_URL;
 
 	try {
 		const client = new Redis(redisUrl, {

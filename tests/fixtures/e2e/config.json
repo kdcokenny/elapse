@@ -1,10 +1,10 @@
 {
-	"repos": [{ "owner": "excalidraw", "repo": "excalidraw" }],
+	"repos": [{ "owner": "facebook", "repo": "react" }],
 	"dateRange": {
-		"start": "2025-11-25",
-		"end": "2025-11-29"
+		"start": "2024-10-14",
+		"end": "2024-10-20"
 	},
-	"maxCommitsPerRepo": 20,
+	"maxCommitsPerRepo": 50,
 	"maxDiffSize": 100000,
 	"rateLimitDelayMs": 200,
 	"prCollection": {

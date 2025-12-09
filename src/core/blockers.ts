@@ -2,6 +2,25 @@
  * Blocker detection and types for extracting blockers from PRs.
  */
 
+// Stale review detection configuration
+const DEFAULT_STALE_REVIEW_DAYS = 3;
+const STALE_REVIEW_DAYS = Number.parseInt(
+	process.env.STALE_REVIEW_DAYS || String(DEFAULT_STALE_REVIEW_DAYS),
+	10,
+);
+
+/**
+ * Stale review entry for the AWAITING REVIEW section.
+ */
+export interface StaleReview {
+	prNumber: number;
+	prTitle: string;
+	reviewer: string;
+	reviewerType: "user" | "team";
+	daysAgo: number;
+	repo: string;
+}
+
 /**
  * Summary of a blocker for report display.
  */
@@ -163,4 +182,79 @@ export function groupBlockersByUser(
 		});
 
 	return groups;
+}
+
+/**
+ * Input type for detectStaleReviews function.
+ * Represents an open PR with its blockers. The PR number is the map key.
+ */
+export interface StaleReviewInput {
+	meta: { title: string; repo: string };
+	blockers: Map<
+		string,
+		{
+			type: string;
+			reviewer?: string;
+			detectedAt: string;
+			resolvedAt?: string;
+		}
+	>;
+}
+
+/**
+ * Detect stale review requests (pending_review blockers older than threshold).
+ * A review is stale if:
+ * 1. Requested >= STALE_REVIEW_DAYS ago
+ * 2. Not already resolved
+ *
+ * Note: Draft/no-rush filtering is done upstream when tracking blockers.
+ *
+ * @param openPRs Map of open PRs with their blockers
+ * @param thresholdDays Optional override for stale threshold (default: STALE_REVIEW_DAYS env var or 3)
+ * @returns Array of stale reviews sorted by age (oldest first)
+ */
+export function detectStaleReviews(
+	openPRs: Map<number, StaleReviewInput>,
+	thresholdDays: number = STALE_REVIEW_DAYS,
+): StaleReview[] {
+	const staleReviews: StaleReview[] = [];
+	const now = Date.now();
+	const staleThresholdMs = thresholdDays * 24 * 60 * 60 * 1000;
+
+	for (const [prNumber, pr] of openPRs) {
+		for (const [key, blocker] of pr.blockers) {
+			// Only check pending_review blockers
+			if (blocker.type !== "pending_review") continue;
+
+			// Skip already-resolved blockers
+			if (blocker.resolvedAt) continue;
+
+			// Must have detectedAt timestamp
+			if (!blocker.detectedAt) continue;
+
+			const requestedAt = new Date(blocker.detectedAt).getTime();
+			const ageMs = now - requestedAt;
+
+			// Check if stale (>= threshold)
+			if (ageMs < staleThresholdMs) continue;
+
+			const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+			const isTeam = key.includes("pending:team:");
+			const reviewer = blocker.reviewer || key.replace(/^pending:(team:)?/, "");
+
+			staleReviews.push({
+				prNumber,
+				prTitle: pr.meta.title,
+				reviewer,
+				reviewerType: isTeam ? "team" : "user",
+				daysAgo,
+				repo: pr.meta.repo,
+			});
+		}
+	}
+
+	// Sort by days (oldest first)
+	staleReviews.sort((a, b) => b.daysAgo - a.daysAgo);
+
+	return staleReviews;
 }

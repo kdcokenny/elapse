@@ -25,7 +25,10 @@ services:
       - LLM_MODEL_NAME=${LLM_MODEL_NAME:-gemini-flash-latest}
       - PROJECT_CONTEXT=${PROJECT_CONTEXT:-A software project}
       - TEAM_TIMEZONE=${TEAM_TIMEZONE:-America/New_York}
-      - SCHEDULE=${SCHEDULE:-0 9 * * 1-5}
+      # Report scheduling
+      - REPORT_CADENCE=${REPORT_CADENCE:-weekly}
+      - WEEKLY_SCHEDULE=${WEEKLY_SCHEDULE:-0 16 * * 5}
+      - DAILY_SCHEDULE=${DAILY_SCHEDULE:-0 9 * * 1-5}
       - LOG_LEVEL=${LOG_LEVEL:-info}
     depends_on:
       redis:

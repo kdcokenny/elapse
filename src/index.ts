@@ -5,13 +5,15 @@
 
 import { Queue } from "bullmq";
 import { createProbot } from "probot";
+import { DEFAULT_PORT } from "./config";
 import { type Credentials, getCredentials } from "./credentials";
+import { setupReportScheduler } from "./daily-reporter";
 import { logger } from "./logger";
 import { redis } from "./redis";
-import { setupReportScheduler } from "./reporter";
 import { createNormalServer, createSetupServer } from "./routes";
 import { initShutdownHandlers, registerShutdownHandler } from "./shutdown";
 import { createWebhookApp } from "./webhook";
+import { setupWeeklyReportScheduler } from "./weekly-reporter";
 import { createWorker, QUEUE_NAME } from "./worker";
 
 /**
@@ -104,8 +106,9 @@ async function startNormalMode(credentials: Credentials, port: number) {
 		logger.info("Worker closed");
 	});
 
-	// Setup daily report scheduler
+	// Setup report schedulers (respects REPORT_CADENCE)
 	await setupReportScheduler(queue);
+	await setupWeeklyReportScheduler(queue);
 
 	// Register Redis shutdown (last, so it closes after everything else)
 	registerShutdownHandler(async () => {
@@ -125,7 +128,7 @@ async function main() {
 	// Initialize shutdown handlers
 	initShutdownHandlers();
 
-	const port = parseInt(process.env.PORT || "3000", 10);
+	const port = parseInt(process.env.PORT || String(DEFAULT_PORT), 10);
 
 	// Get credentials from environment variables
 	const credentials = getCredentials();

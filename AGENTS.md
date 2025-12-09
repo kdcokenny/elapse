@@ -19,7 +19,7 @@
 Elapse is an AI-powered standup bot: **Ingest → Digest → Report**
 - **Ingest** (`webhook.ts`): Probot receives GitHub push webhooks, filters commits, queues to BullMQ
 - **Digest** (`worker.ts`): Fetches diffs via Octokit, AI translates to business-value sentences, stores in Redis
-- **Report** (`reporter.ts`): Scheduled job (9 AM) aggregates translations, posts to Discord
+- **Report** (`daily-reporter.ts`, `weekly-reporter.ts`): Scheduled jobs generate daily (9 AM) or weekly (Fri 4 PM) reports, posts to Discord
 
 ## Code Style (Biome enforced)
 - **Indentation**: Tabs

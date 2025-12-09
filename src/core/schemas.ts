@@ -67,3 +67,54 @@ export const CommentAnalysisSchema = z.object({
 });
 
 export type CommentAnalysisOutput = z.infer<typeof CommentAnalysisSchema>;
+
+// =============================================================================
+// Weekly Summary Schema
+// =============================================================================
+
+// Note: No per-field .max() constraints - we validate total word count (<500)
+// on the formatted output instead. This lets the AI generate quality content
+// without arbitrary truncation.
+//
+// DESIGN: Status sections vs Content sections
+// - blockersAndRisks: STATUS - always required ("None active" is meaningful)
+// - helpNeeded: STATUS - always required ("(none)" confirms no escalations)
+// - nextWeek: CONTENT - optional (only when we have in-progress data)
+//
+// Status sections are always shown so execs can quickly confirm "all clear"
+// vs worrying if the report is incomplete. Content sections are conditional.
+export const WeeklySummarySchema = z.object({
+	executiveSummary: z
+		.string()
+		.describe("1-2 sentence top-line summary of the week"),
+	shippedGroups: z
+		.array(
+			z.object({
+				theme: z
+					.string()
+					.describe("Business area: Auth, Payments, Infrastructure, etc."),
+				summary: z.string().describe("1-2 sentence value summary"),
+				contributors: z
+					.array(z.string())
+					.describe("GitHub usernames who contributed"),
+			}),
+		)
+		.describe("3-5 themed groups of shipped work"),
+	// STATUS: Nullable - AI returns null when no blockers, we render "None active"
+	blockersAndRisks: z
+		.string()
+		.nullable()
+		.describe("Active blockers summary, or null if none"),
+	// STATUS: Nullable - AI returns null when no escalations, we render "None this week"
+	helpNeeded: z
+		.string()
+		.nullable()
+		.describe("Escalations needed, or null if none"),
+	// CONTENT: Optional - only present when in-progress work exists
+	nextWeek: z
+		.string()
+		.optional()
+		.describe("Work carrying into next week - only when in-progress exists"),
+});
+
+export type WeeklySummaryOutput = z.infer<typeof WeeklySummarySchema>;

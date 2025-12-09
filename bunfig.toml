@@ -1,0 +1,4 @@
+[test]
+# Default test directory - matches "bun run test" behavior
+# Use "bun test:e2e" or "bun test:all" for extended tests
+root = "tests/core/"

@@ -60,6 +60,7 @@
  */
 
 import { analyzeComment, translateDiff } from "../../src/ai";
+import { generateReport } from "../../src/daily-reporter";
 import {
 	addBranchCommit,
 	createOrUpdatePR,
@@ -68,7 +69,6 @@ import {
 	setPRBlocker,
 	setPRStatus,
 } from "../../src/redis";
-import { generateReport } from "../../src/reporter";
 import { listAvailableDates } from "../fixtures/loader";
 import { initTestRedis, resetTestRedis, restoreRedis } from "./test-redis";
 import {

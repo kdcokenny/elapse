@@ -46,6 +46,28 @@ Rules:
 - Don't mention file names, function names, or technical jargon
 - Use SKIP for: typos, formatting, whitespace, comments, import reordering
 
+HANDLING CONTRADICTORY SIGNALS:
+
+When commit messages contain conflicting information:
+
+1. PRIORITY ORDER: Title > Branch name > Diff > Body
+   - PR titles are usually accurate summaries
+   - PR bodies often contain context/discussion that contradicts the action
+
+2. DESCRIBE THE RESULT, NOT THE JOURNEY:
+   - Bad: "Re-enabled legacy mode for compatibility"
+   - Good: "Updated tests to work without legacy mode"
+
+3. FLAG/TOGGLE CHANGES:
+   - Focus on the NEW state after the change
+   - "disable X" = X is now OFF
+   - "enable X" = X is now ON
+   - Ignore discussion about why the old state existed
+
+4. NEGATIVE PREFIXES (disable, remove, un-, deprecate):
+   - These indicate REMOVAL of capability
+   - Don't invert meaning based on body text discussing the removed feature
+
 Examples:
 - feature/high: "Added user authentication so customers can securely access their accounts"
 - fix/high: "Fixed a bug that was causing checkout failures for some users"
@@ -243,5 +265,191 @@ export function buildFeatureNarratorPrompt(
 	return {
 		system: buildFeatureNarratorSystemPrompt(projectContext),
 		user: buildFeatureNarratorUserPrompt(prTitle, prNumber, translations),
+	};
+}
+
+// =============================================================================
+// Weekly Summary Prompts
+// =============================================================================
+
+/**
+ * Options for conditional section inclusion in weekly prompts.
+ *
+ * DESIGN: Status sections vs Content sections
+ * - Blockers & Risks: STATUS - always shown ("None active" is meaningful)
+ * - Help Needed: STATUS - always shown ("(none)" confirms no escalations needed)
+ * - Next Week: CONTENT - only shown when we have in-progress data (omit if no data)
+ *
+ * This prevents hallucination for content sections while keeping status sections
+ * visible so executives can quickly confirm "all clear" vs incomplete report.
+ */
+export interface WeeklyPromptOptions {
+	/** Only affects whether we include in-progress data in the prompt */
+	includeNextWeek: boolean;
+}
+
+/**
+ * Build the system prompt for weekly summarization.
+ * Status sections (Blockers, Help Needed) are always included.
+ * Content sections (Next Week) are conditionally included based on data.
+ */
+function buildWeeklySummarySystemPrompt(
+	projectContext?: string,
+	options?: WeeklyPromptOptions,
+): string {
+	const context = projectContext || "a software project";
+	const opts = options || { includeNextWeek: true };
+
+	// Build output sections - status sections always included
+	const sections: string[] = [
+		`1. EXECUTIVE SUMMARY (exactly 1-2 sentences)
+   - Summarize the week's main outcomes
+   - Focus on business value, not technical details
+   - Be specific: "Shipped payments integration" not "Made progress"`,
+
+		`2. SHIPPED THIS WEEK (3-5 themed groups)
+   - Group related PRs by business area (Auth, Payments, Infrastructure, Performance, etc.)
+   - Each group: 1-2 sentence summary describing the VALUE delivered
+   - Include contributor names in the contributors array
+   - Do NOT list individual PRs or PR numbers
+   - Do NOT use technical jargon (no "refactored", "migrated", "deprecated")`,
+
+		`3. BLOCKERS & RISKS (STATUS SECTION)
+   - If active blockers exist: summarize them with how long blocked
+   - If NO active blockers: return null for this field`,
+
+		`4. HELP NEEDED (STATUS SECTION)
+   - If escalations needed: extract from blockers, include @mentions
+   - If NO escalations needed: return null for this field`,
+	];
+
+	// Only include Next Week if we have in-progress data
+	if (opts.includeNextWeek) {
+		sections.push(`5. CARRYING INTO NEXT WEEK
+   - What's in progress that will continue
+   - Expected timeline if known
+   - Keep to 1-2 items max`);
+	}
+
+	const exclusionNote = !opts.includeNextWeek
+		? `\n\nIMPORTANT: Do NOT include any "next week" or "carrying into next week" content. There is no in-progress work to report.`
+		: "";
+
+	return `You are summarizing a week of engineering activity for non-technical stakeholders.
+
+Your output will be read by engineering managers, product managers, and executives who need to understand what the engineering team accomplished without technical jargon.
+
+Context: You are writing about ${context}.
+
+OUTPUT REQUIREMENTS:
+
+${sections.join("\n\n")}
+
+CONSTRAINTS:
+- Total output MUST be under 500 words
+- Use plain language a CEO would understand
+- No PR numbers in any text
+- Each "Shipped" group should be 1-2 sentences max${exclusionNote}`;
+}
+
+/**
+ * Build the user prompt for weekly summarization.
+ * Always includes blocker data (status sections).
+ * Only includes in-progress data if we have it (content section).
+ */
+function buildWeeklySummaryUserPrompt(
+	shipped: Array<{ translation: string; author: string }>,
+	activeBlockers: Array<{
+		reason: string;
+		ageDays: number;
+		author: string;
+		mentionedUsers: string[];
+	}>,
+	resolvedBlockers: Array<{ reason: string }>,
+	inProgress: Array<{ translation: string; author: string }>,
+	options?: WeeklyPromptOptions,
+): string {
+	const opts = options || { includeNextWeek: true };
+
+	const shippedList =
+		shipped.length === 0
+			? "(none)"
+			: shipped.map((pr) => `- "${pr.translation}" by ${pr.author}`).join("\n");
+
+	// Build data sections - always include blocker info for status sections
+	const dataSections: string[] = [
+		`MERGED THIS WEEK (${shipped.length} PRs):\n${shippedList}`,
+	];
+
+	// Always include blocker data (for status sections)
+	if (activeBlockers.length > 0) {
+		const blockerList = activeBlockers
+			.map((b) => {
+				const mentions =
+					b.mentionedUsers.length > 0
+						? ` (mentions: ${b.mentionedUsers.map((u) => `@${u}`).join(", ")})`
+						: "";
+				return `- ${b.reason} (${b.ageDays} days) - ${b.author}${mentions}`;
+			})
+			.join("\n");
+		dataSections.push(
+			`ACTIVE BLOCKERS (${activeBlockers.length}):\n${blockerList}`,
+		);
+	} else {
+		dataSections.push("ACTIVE BLOCKERS (0):\n(none)");
+	}
+
+	// Include resolved blockers if we have any
+	if (resolvedBlockers.length > 0) {
+		const resolvedList = resolvedBlockers
+			.map((b) => `- ${b.reason}`)
+			.join("\n");
+		dataSections.push(
+			`BLOCKERS RESOLVED THIS WEEK (${resolvedBlockers.length}):\n${resolvedList}`,
+		);
+	}
+
+	// Only include in-progress data if we're asking for next week section
+	if (opts.includeNextWeek && inProgress.length > 0) {
+		const progressList = inProgress
+			.map((pr) => `- "${pr.translation}" by ${pr.author}`)
+			.join("\n");
+		dataSections.push(`IN PROGRESS (${inProgress.length}):\n${progressList}`);
+	}
+
+	return `Summarize this week's engineering activity:
+
+${dataSections.join("\n\n")}
+
+Generate the weekly summary following the output requirements.`;
+}
+
+/**
+ * Build the complete weekly summary prompt object.
+ * Options control which sections are included to prevent AI hallucination
+ * when we don't have data for certain sections.
+ */
+export function buildWeeklySummaryPrompt(
+	shipped: Array<{ translation: string; author: string }>,
+	activeBlockers: Array<{
+		reason: string;
+		ageDays: number;
+		author: string;
+		mentionedUsers: string[];
+	}>,
+	resolvedBlockers: Array<{ reason: string }>,
+	inProgress: Array<{ translation: string; author: string }>,
+	projectContext?: string,
+	options?: WeeklyPromptOptions,
+): { system: string; user: string } {
+	return {
+		system: buildWeeklySummarySystemPrompt(projectContext, options),
+		user: buildWeeklySummaryUserPrompt(
+			shipped,
+			activeBlockers,
+			resolvedBlockers,
+			inProgress,
+			options,
+		),
 	};
 }

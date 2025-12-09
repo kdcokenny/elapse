@@ -10,6 +10,8 @@ import {
 	buildCommentAnalysisPrompt,
 	buildFeatureNarratorPrompt,
 	buildTranslatorPrompt,
+	buildWeeklySummaryPrompt,
+	type WeeklyPromptOptions,
 } from "./core/prompts";
 import {
 	type CommentAnalysisOutput,
@@ -17,6 +19,8 @@ import {
 	type FeatureSummaryOutput,
 	FeatureSummarySchema,
 	TranslationSchema,
+	type WeeklySummaryOutput,
+	WeeklySummarySchema,
 } from "./core/schemas";
 import { AIProviderError, AIProviderTimeoutError } from "./errors";
 import { aiLogger } from "./logger";
@@ -266,4 +270,96 @@ function cleanPRTitle(title: string): string {
 	}
 
 	return cleaned || "Updates and improvements";
+}
+
+// =============================================================================
+// Weekly Summary Generation
+// =============================================================================
+
+/**
+ * Generate a weekly summary from aggregated week data.
+ * Returns structured output for the weekly report.
+ *
+ * Options control which sections are included to prevent AI hallucination
+ * when we don't have data for certain sections.
+ */
+export async function generateWeeklySummary(
+	shipped: Array<{ translation: string; author: string }>,
+	activeBlockers: Array<{
+		reason: string;
+		ageDays: number;
+		author: string;
+		mentionedUsers: string[];
+	}>,
+	resolvedBlockers: Array<{ reason: string }>,
+	inProgress: Array<{ translation: string; author: string }>,
+	options?: WeeklyPromptOptions,
+): Promise<WeeklySummaryOutput> {
+	const log = aiLogger.child({ operation: "weeklySummary" });
+
+	// Handle empty week gracefully - return null for status fields (formatting adds fallback)
+	if (
+		shipped.length === 0 &&
+		activeBlockers.length === 0 &&
+		inProgress.length === 0
+	) {
+		return {
+			executiveSummary:
+				"A quiet week with no significant engineering activity recorded.",
+			shippedGroups: [],
+			// Status fields null - formatting will render "None active" / "None this week"
+			blockersAndRisks: null,
+			helpNeeded: null,
+			// Content field (nextWeek) omitted when no in-progress data
+		};
+	}
+
+	try {
+		const prompt = buildWeeklySummaryPrompt(
+			shipped,
+			activeBlockers,
+			resolvedBlockers,
+			inProgress,
+			PROJECT_CONTEXT,
+			options,
+		);
+
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+
+		try {
+			const { object, usage } = await generateObject({
+				model: getModel(),
+				schema: WeeklySummarySchema,
+				system: prompt.system,
+				prompt: prompt.user,
+				temperature: 0.2, // Slightly higher for creative grouping
+				abortSignal: controller.signal,
+			});
+
+			log.debug(
+				{
+					tokens: usage?.totalTokens,
+					shippedCount: shipped.length,
+					groupCount: object.shippedGroups.length,
+				},
+				"Weekly summary complete",
+			);
+
+			return object;
+		} finally {
+			clearTimeout(timeout);
+		}
+	} catch (error) {
+		if ((error as Error).name === "AbortError") {
+			throw new AIProviderTimeoutError(AI_TIMEOUT_MS, error as Error);
+		}
+
+		log.error({ err: error }, "Weekly summary generation failed");
+		throw new AIProviderError(
+			`Weekly summary failed: ${(error as Error).message}`,
+			undefined,
+			error as Error,
+		);
+	}
 }

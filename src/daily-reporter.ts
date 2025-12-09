@@ -5,7 +5,16 @@
 
 import type { Job, Queue } from "bullmq";
 import { narrateFeature } from "./ai";
-import { type BlockerSummary, groupBlockersByUser } from "./core/blockers";
+import {
+	DEFAULT_DAILY_SCHEDULE,
+	DEFAULT_REPORT_CADENCE,
+	getTimezone,
+} from "./config";
+import {
+	type BlockerSummary,
+	detectStaleReviews,
+	groupBlockersByUser,
+} from "./core/blockers";
 import {
 	type ActivityStats,
 	type BranchSummary,
@@ -15,7 +24,7 @@ import {
 	getTodayDate,
 } from "./core/formatting";
 import { getWatermark } from "./core/watermark";
-import { DiscordWebhookError } from "./errors";
+import { sendToDiscord } from "./discord";
 import { reportLogger } from "./logger";
 import {
 	cleanupResolvedBlockers,
@@ -24,138 +33,12 @@ import {
 	setLastReportTimestamp,
 } from "./redis";
 
-const DISCORD_TIMEOUT_MS = 10000;
-
 // Enable in-progress section via env
 const SHOW_IN_PROGRESS = process.env.SHOW_IN_PROGRESS !== "false";
-
-// Stale review detection configuration
-const STALE_REVIEW_DAYS = Number.parseInt(
-	process.env.STALE_REVIEW_DAYS || "3",
-	10,
-);
-
-/**
- * Stale review entry for the AWAITING REVIEW section.
- */
-export interface StaleReview {
-	prNumber: number;
-	prTitle: string;
-	reviewer: string;
-	reviewerType: "user" | "team";
-	daysAgo: number;
-	repo: string;
-}
 
 export interface ReportJob {
 	type: "daily";
 	date?: string; // Optional override, defaults to today
-}
-
-/**
- * Send a message to Discord webhook.
- */
-async function sendToDiscord(content: string): Promise<void> {
-	const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
-
-	if (!webhookUrl) {
-		reportLogger.warn(
-			"Discord webhook URL not configured, logging report instead",
-		);
-		console.log(`\n${"=".repeat(60)}`);
-		console.log(content);
-		console.log(`${"=".repeat(60)}\n`);
-		return;
-	}
-
-	const response = await fetch(webhookUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ content }),
-		signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
-	});
-
-	if (!response.ok) {
-		let retryAfterMs: number | undefined;
-
-		if (response.status === 429) {
-			const retryAfter = response.headers.get("Retry-After");
-			retryAfterMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : 60000;
-		}
-
-		throw new DiscordWebhookError(
-			`Discord webhook failed: ${response.status} ${response.statusText}`,
-			retryAfterMs,
-		);
-	}
-
-	reportLogger.info("Report sent to Discord");
-}
-
-/**
- * Detect stale review requests (pending_review blockers older than threshold).
- * A review is stale if:
- * 1. Requested >= STALE_REVIEW_DAYS ago
- * 2. PR is not a draft (excluded via label check)
- * 3. PR doesn't have no-rush/wip/draft labels
- */
-function detectStaleReviews(
-	openPRs: Map<
-		number,
-		{
-			meta: { title: string; repo: string };
-			blockers: Map<
-				string,
-				{
-					type: string;
-					reviewer?: string;
-					detectedAt: string;
-					resolvedAt?: string;
-				}
-			>;
-		}
-	>,
-): StaleReview[] {
-	const staleReviews: StaleReview[] = [];
-	const now = Date.now();
-	const staleThresholdMs = STALE_REVIEW_DAYS * 24 * 60 * 60 * 1000;
-
-	for (const [prNumber, pr] of openPRs) {
-		for (const [key, blocker] of pr.blockers) {
-			// Only check pending_review blockers
-			if (blocker.type !== "pending_review") continue;
-
-			// Skip already-resolved blockers
-			if (blocker.resolvedAt) continue;
-
-			// Must have detectedAt timestamp
-			if (!blocker.detectedAt) continue;
-
-			const requestedAt = new Date(blocker.detectedAt).getTime();
-			const ageMs = now - requestedAt;
-
-			// Check if stale (>= threshold)
-			if (ageMs < staleThresholdMs) continue;
-
-			const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-			const isTeam = key.includes("pending:team:");
-			const reviewer = blocker.reviewer || key.replace(/^pending:(team:)?/, "");
-
-			staleReviews.push({
-				prNumber,
-				prTitle: pr.meta.title,
-				reviewer,
-				reviewerType: isTeam ? "team" : "user",
-				daysAgo,
-				repo: pr.meta.repo,
-			});
-		}
-	}
-
-	// Sort by days (oldest first)
-	staleReviews.sort((a, b) => b.daysAgo - a.daysAgo);
-
-	return staleReviews;
 }
 
 /**
@@ -371,7 +254,7 @@ async function processReportJob(
 			return { sent: false };
 		}
 
-		await sendToDiscord(content);
+		await sendToDiscord(content, "daily");
 
 		// Store watermark after successful send (idempotent - same data = same watermark)
 		await setLastReportTimestamp(watermark);
@@ -394,8 +277,19 @@ async function processReportJob(
  * Set up the daily report scheduler using BullMQ repeatable jobs.
  */
 export async function setupReportScheduler(queue: Queue): Promise<void> {
-	const timezone = process.env.TEAM_TIMEZONE || "America/New_York";
-	const schedule = process.env.SCHEDULE || "0 9 * * 1-5"; // 9 AM Mon-Fri
+	const cadence = process.env.REPORT_CADENCE || DEFAULT_REPORT_CADENCE;
+
+	// Skip daily if weekly-only
+	if (cadence === "weekly") {
+		reportLogger.info({ cadence }, "Daily reports disabled (weekly-first)");
+		return;
+	}
+
+	const timezone = getTimezone();
+	const schedule =
+		process.env.DAILY_SCHEDULE ||
+		process.env.SCHEDULE ||
+		DEFAULT_DAILY_SCHEDULE;
 
 	await queue.upsertJobScheduler(
 		"daily-report",
@@ -417,7 +311,7 @@ export async function setupReportScheduler(queue: Queue): Promise<void> {
 	);
 
 	reportLogger.info(
-		{ schedule, timezone },
+		{ schedule, timezone, cadence },
 		"Daily report scheduler configured",
 	);
 }

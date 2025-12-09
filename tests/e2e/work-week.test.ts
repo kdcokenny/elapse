@@ -84,6 +84,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { generateReport } from "../../src/daily-reporter";
 // Import production Redis functions for stateful testing (branch-first)
 import {
 	addBranchCommit,
@@ -93,7 +94,6 @@ import {
 	setPRBlocker,
 	setPRStatus,
 } from "../../src/redis";
-import { generateReport } from "../../src/reporter";
 import type { ProductionDayFixture, WorkDay } from "../fixtures/types";
 import { initTestRedis, resetTestRedis, restoreRedis } from "./test-redis";
 import {

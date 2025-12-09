@@ -1,0 +1,228 @@
+{
+	"date": "2024-10-16",
+	"commits": [
+		{
+			"sha": "3ed64f8232d0709f93f096c6fb9f7a16865b0ff5",
+			"message": "[ez] Update references to 'forget' in react-compiler-runtime (#31277)\n\nUpdates the runtime to reference React Compiler instead of Forget.",
+			"user": "poteto",
+			"timestamp": "2024-10-16T22:44:50Z",
+			"author": {
+				"name": "lauren",
+				"email": "poteto@users.noreply.github.com",
+				"username": "poteto"
+			},
+			"files": {
+				"added": [],
+				"modified": ["compiler/packages/react-compiler-runtime/src/index.ts"],
+				"removed": []
+			},
+			"diff": "diff --git a/compiler/packages/react-compiler-runtime/src/index.ts b/compiler/packages/react-compiler-runtime/src/index.ts\nindex 7b8cbe36f52..57f61f3e8c0 100644\n--- a/compiler/packages/react-compiler-runtime/src/index.ts\n+++ b/compiler/packages/react-compiler-runtime/src/index.ts\n@@ -5,7 +5,7 @@\n  * LICENSE file in the root directory of this source tree.\n  */\n \n-'use no forget';\n+'use no memo';\n \n import * as React from 'react';\n \n@@ -67,7 +67,7 @@ const LazyGuardDispatcher: {[key: string]: (...args: Array<any>) => any} = {};\n ].forEach(name => {\n   LazyGuardDispatcher[name] = () => {\n     throw new Error(\n-      `[React] Unexpected React hook call (${name}) from a React Forget compiled function. ` +\n+      `[React] Unexpected React hook call (${name}) from a React compiled function. ` +\n         \"Check that all hooks are called directly and named according to convention ('use[A-Z]') \",\n     );\n   };\n@@ -79,7 +79,7 @@ let originalDispatcher: unknown = null;\n LazyGuardDispatcher['useMemoCache'] = (count: number) => {\n   if (originalDispatcher == null) {\n     throw new Error(\n-      'React Forget internal invariant violation: unexpected null dispatcher',\n+      'React Compiler internal invariant violation: unexpected null dispatcher',\n     );\n   } else {\n     return (originalDispatcher as any).useMemoCache(count);\n@@ -103,12 +103,12 @@ const guardFrames: Array<unknown> = [];\n /**\n  * When `enableEmitHookGuards` is set, this does runtime validation\n  * of the no-conditional-hook-calls rule.\n- * As Forget needs to statically understand which calls to move out of\n- * conditional branches (i.e. Forget cannot memoize the results of hook\n+ * As React Compiler needs to statically understand which calls to move out of\n+ * conditional branches (i.e. React Compiler cannot memoize the results of hook\n  * calls), its understanding of \"the rules of React\" are more restrictive.\n  * This validation throws on unsound inputs at runtime.\n  *\n- * Components should only be invoked through React as Forget could memoize\n+ * Components should only be invoked through React as React Compiler could memoize\n  * the call to AnotherComponent, introducing conditional hook calls in its\n  * compiled output.\n  * ```js\n@@ -148,7 +148,7 @@ export function $dispatcherGuard(kind: GuardKind) {\n \n     if (curr === LazyGuardDispatcher) {\n       throw new Error(\n-        `[React] Unexpected call to custom hook or component from a React Forget compiled function. ` +\n+        `[React] Unexpected call to custom hook or component from a React compiled function. ` +\n           \"Check that (1) all hooks are called directly and named according to convention ('use[A-Z]') \" +\n           'and (2) components are returned as JSX instead of being directly invoked.',\n       );\n@@ -160,7 +160,7 @@ export function $dispatcherGuard(kind: GuardKind) {\n \n     if (lastFrame == null) {\n       throw new Error(\n-        'React Forget internal error: unexpected null in guard stack',\n+        'React Compiler internal error: unexpected null in guard stack',\n       );\n     }\n     if (guardFrames.length === 0) {\n@@ -176,12 +176,12 @@ export function $dispatcherGuard(kind: GuardKind) {\n     const lastFrame = guardFrames.pop();\n     if (lastFrame == null) {\n       throw new Error(\n-        'React Forget internal error: unexpected null in guard stack',\n+        'React Compiler internal error: unexpected null in guard stack',\n       );\n     }\n     setCurrent(lastFrame);\n   } else {\n-    throw new Error('Forget internal error: unreachable block' + kind);\n+    throw new Error('React Compiler internal error: unreachable block' + kind);\n   }\n }\n \n",
+			"diffSize": 3636,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 31277,
+				"title": "[ez] Update references to 'forget' in react-compiler-runtime",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "pr31277",
+				"baseBranch": "main",
+				"author": "poteto",
+				"body": "\n\nUpdates the runtime to reference React Compiler instead of Forget.\n",
+				"labels": ["CLA Signed", "React Core Team"],
+				"requestedReviewers": [],
+				"reviews": [
+					{
+						"id": 2373557980,
+						"state": "APPROVED",
+						"author": "josephsavona"
+					}
+				],
+				"comments": [
+					{
+						"id": 2417774418,
+						"body": "[vc]: #a7/97pz/TcMC/AQN65No1qOp9Iqq2EJ8SHyU9GLa07I=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJyZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kIiwiaW5zcGVjdG9yVXJsIjoiaHR0cHM6Ly92ZXJjZWwuY29tL2Zib3BlbnNvdXJjZS9yZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kLzVRNlhYYWVHVEVOaEpHVzJUOEZVVUpzU1NBSEEiLCJwcmV2aWV3VXJsIjoicmVhY3QtY29tcGlsZXItcGxheWdyb3VuZC1naXQtcHIzMTI3Ny1mYm9wZW5zb3VyY2UudmVyY2VsLmFwcCIsIm5leHRDb21taXRTdGF0dXMiOiJERVBMT1lFRCIsImxpdmVGZWVkYmFjayI6eyJyZXNvbHZlZCI6MCwidW5yZXNvbHZlZCI6MCwidG90YWwiOjAsImxpbmsiOiJyZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kLWdpdC1wcjMxMjc3LWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIn0sInJvb3REaXJlY3RvcnkiOiJjb21waWxlci9hcHBzL3BsYXlncm91bmQifV19\n**The latest updates on your projects**. Learn more about [Vercel for Git ↗︎](https://vercel.link/github-learn-more)\n\n| Name | Status | Preview | Comments | Updated (UTC) |\n| :--- | :----- | :------ | :------- | :------ |\n| **react-compiler-playground** | ✅ Ready ([Inspect](https://vercel.com/fbopensource/react-compiler-playground/5Q6XXaeGTENhJGW2T8FUUJsSSAHA)) | [Visit Preview](https://vercel.live/open-feedback/react-compiler-playground-git-pr31277-fbopensource.vercel.app?via=pr-comment-visit-preview-link&passThrough=1) | 💬 [**Add feedback**](https://vercel.live/open-feedback/react-compiler-playground-git-pr31277-fbopensource.vercel.app?via=pr-comment-feedback-link) | Oct 16, 2024 7:39pm |\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2024-10-16T19:35:29Z"
+					}
+				],
+				"htmlUrl": "https://github.com/facebook/react/pull/31277"
+			}
+		},
+		{
+			"sha": "a3d9ea05bf01f3c3d7aedc2d938c581ad11fd14a",
+			"message": "Delete `__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED` from React Native Renderer (#31276)\n\n## Summary\r\n\r\nThe React Native Renderer exports a\r\n`__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED` property with a\r\nsingle method that has no remaining call sites:\r\n`computeComponentStackForErrorReporting`\r\n\r\nThis PR cleans up this unused export.\r\n\r\n## How did you test this change?\r\n\r\n```\r\n$ yarn\r\n$ yarn flow fabric\r\n$ yarn test\r\n```",
+			"user": "yungsters",
+			"timestamp": "2024-10-16T18:19:01Z",
+			"author": {
+				"name": "Timothy Yung",
+				"email": "yungsters@meta.com",
+				"username": "yungsters"
+			},
+			"files": {
+				"added": [],
+				"modified": [
+					"packages/react-native-renderer/src/ReactNativeRenderer.js",
+					"packages/react-native-renderer/src/ReactNativeTypes.js",
+					"packages/react-native-renderer/src/__tests__/ReactNativeError-test.internal.js"
+				],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/react-native-renderer/src/ReactNativeRenderer.js b/packages/react-native-renderer/src/ReactNativeRenderer.js\nindex 4ec5ab2c585..7f959184c95 100644\n--- a/packages/react-native-renderer/src/ReactNativeRenderer.js\n+++ b/packages/react-native-renderer/src/ReactNativeRenderer.js\n@@ -26,7 +26,6 @@ import {\n   defaultOnRecoverableError,\n } from 'react-reconciler/src/ReactFiberReconciler';\n // TODO: direct imports like some-package/src/* are bad. Fix me.\n-import {getStackByFiberInDevAndProd} from 'react-reconciler/src/ReactFiberComponentStack';\n import {createPortal as createPortalImpl} from 'react-reconciler/src/ReactPortal';\n import {\n   setBatchingImplementation,\n@@ -35,7 +34,6 @@ import {\n // Modules provided by RN:\n import {UIManager} from 'react-native/Libraries/ReactPrivate/ReactNativePrivateInterface';\n \n-import {getClosestInstanceFromNode} from './ReactNativeComponentTree';\n import {getInspectorDataForInstance} from './ReactNativeFiberInspector';\n import {LegacyRoot} from 'react-reconciler/src/ReactRootTags';\n import {\n@@ -194,20 +192,8 @@ function createPortal(\n \n setBatchingImplementation(batchedUpdatesImpl, discreteUpdates);\n \n-function computeComponentStackForErrorReporting(reactTag: number): string {\n-  const fiber = getClosestInstanceFromNode(reactTag);\n-  if (!fiber) {\n-    return '';\n-  }\n-  return getStackByFiberInDevAndProd(fiber);\n-}\n-\n const roots = new Map<number, FiberRoot>();\n \n-const Internals = {\n-  computeComponentStackForErrorReporting,\n-};\n-\n export {\n   // This is needed for implementation details of TouchableNativeFeedback\n   // Remove this once TouchableNativeFeedback doesn't use cloneElement\n@@ -220,7 +206,6 @@ export {\n   unmountComponentAtNodeAndRemoveContainer,\n   createPortal,\n   batchedUpdates as unstable_batchedUpdates,\n-  Internals as __SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED,\n   // This export is typically undefined in production builds.\n   // See the \"enableGetInspectorDataForInstanceInProduction\" flag.\n   getInspectorDataForInstance,\ndiff --git a/packages/react-native-renderer/src/ReactNativeTypes.js b/packages/react-native-renderer/src/ReactNativeTypes.js\nindex 03c03cfba00..540ac1cf2aa 100644\n--- a/packages/react-native-renderer/src/ReactNativeTypes.js\n+++ b/packages/react-native-renderer/src/ReactNativeTypes.js\n@@ -139,13 +139,6 @@ declare const ensureNativeMethodsAreSynced: NativeMethods;\n export type HostInstance = NativeMethods;\n export type HostComponent<Config> = AbstractComponent<Config, HostInstance>;\n \n-type SecretInternalsType = {\n-  computeComponentStackForErrorReporting(tag: number): string,\n-  // TODO (bvaughn) Decide which additional types to expose here?\n-  // And how much information to fill in for the above types.\n-  ...\n-};\n-\n type InspectorDataProps = $ReadOnly<{\n   [propName: string]: string,\n   ...\n@@ -233,7 +226,6 @@ export type ReactNativeType = {\n   unmountComponentAtNode(containerTag: number): void,\n   unmountComponentAtNodeAndRemoveContainer(containerTag: number): void,\n   +unstable_batchedUpdates: <T>(fn: (T) => void, bookkeeping: T) => void,\n-  +__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED: SecretInternalsType,\n   ...\n };\n \ndiff --git a/packages/react-native-renderer/src/__tests__/ReactNativeError-test.internal.js b/packages/react-native-renderer/src/__tests__/ReactNativeError-test.internal.js\nindex a7ac05b2144..8eb6421d492 100644\n--- a/packages/react-native-renderer/src/__tests__/ReactNativeError-test.internal.js\n+++ b/packages/react-native-renderer/src/__tests__/ReactNativeError-test.internal.js\n@@ -10,32 +10,15 @@\n \n 'use strict';\n \n-let React;\n-let ReactNative;\n let createReactNativeComponentClass;\n-let computeComponentStackForErrorReporting;\n-\n-function normalizeCodeLocInfo(str) {\n-  return (\n-    str &&\n-    str.replace(/\\n +(?:at|in) ([\\S]+)[^\\n]*/g, function (m, name) {\n-      return '\\n    in ' + name + ' (at **)';\n-    })\n-  );\n-}\n \n describe('ReactNativeError', () => {\n   beforeEach(() => {\n     jest.resetModules();\n \n-    React = require('react');\n-    ReactNative = require('react-native-renderer');\n     createReactNativeComponentClass =\n       require('react-native/Libraries/ReactPrivate/ReactNativePrivateInterface')\n         .ReactNativeViewConfigRegistry.register;\n-    computeComponentStackForErrorReporting =\n-      ReactNative.__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED\n-        .computeComponentStackForErrorReporting;\n   });\n \n   it('should throw error if null component registration getter is used', () => {\n@@ -49,43 +32,4 @@ describe('ReactNativeError', () => {\n       'View config getter callback for component `View` must be a function (received `null`)',\n     );\n   });\n-\n-  // @gate !disableLegacyMode\n-  it('should be able to extract a component stack from a native view', () => {\n-    const View = createReactNativeComponentClass('View', () => ({\n-      validAttributes: {foo: true},\n-      uiViewClassName: 'View',\n-    }));\n-\n-    const ref = React.createRef();\n-\n-    function FunctionComponent(props) {\n-      return props.children;\n-    }\n-\n-    class ClassComponent extends React.Component {\n-      render() {\n-        return (\n-          <FunctionComponent>\n-            <View foo=\"test\" ref={ref} />\n-          </FunctionComponent>\n-        );\n-      }\n-    }\n-\n-    ReactNative.render(<ClassComponent />, 1);\n-\n-    const reactTag = ReactNative.findNodeHandle(ref.current);\n-\n-    const componentStack = normalizeCodeLocInfo(\n-      computeComponentStackForErrorReporting(reactTag),\n-    );\n-\n-    expect(componentStack).toBe(\n-      '\\n' +\n-        '    in View (at **)\\n' +\n-        '    in FunctionComponent (at **)\\n' +\n-        '    in ClassComponent (at **)',\n-    );\n-  });\n });\n",
+			"diffSize": 5709,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 31276,
+				"title": "Delete `__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED` from React Native Renderer",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "secrets",
+				"baseBranch": "main",
+				"author": "yungsters",
+				"body": "## Summary\r\n\r\nThe React Native Renderer exports a `__SECRET_INTERNALS_DO_NOT_USE_OR_YOU_WILL_BE_FIRED` property with a single method that has no remaining call sites: `computeComponentStackForErrorReporting`\r\n\r\nThis PR cleans up this unused export.\r\n\r\n## How did you test this change?\r\n\r\n```\r\n$ yarn\r\n$ yarn flow fabric\r\n$ yarn test\r\n```",
+				"labels": ["CLA Signed"],
+				"requestedReviewers": [],
+				"reviews": [
+					{
+						"id": 2373264811,
+						"state": "APPROVED",
+						"author": "kassens"
+					}
+				],
+				"comments": [
+					{
+						"id": 2417525789,
+						"body": "[vc]: #mUDs81jKYoMU/qHsR2gSEuwll5ow6juHhS3DUu7VnRk=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJyZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kIiwicm9vdERpcmVjdG9yeSI6ImNvbXBpbGVyL2FwcHMvcGxheWdyb3VuZCIsImluc3BlY3RvclVybCI6Imh0dHBzOi8vdmVyY2VsLmNvbS9mYm9wZW5zb3VyY2UvcmVhY3QtY29tcGlsZXItcGxheWdyb3VuZC9Dc2QzcUtvOUxlMnEzNkhhRVZwY2k4VUJ2amsxIiwicHJldmlld1VybCI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmsteXVuZ3N0ZXItZWE4YWUxLWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIiwibmV4dENvbW1pdFN0YXR1cyI6IkRFUExPWUVEIiwibGl2ZUZlZWRiYWNrIjp7InJlc29sdmVkIjowLCJ1bnJlc29sdmVkIjowLCJ0b3RhbCI6MCwibGluayI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmsteXVuZ3N0ZXItZWE4YWUxLWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIn19XX0=\n**The latest updates on your projects**. Learn more about [Vercel for Git ↗︎](https://vercel.link/github-learn-more)\n\n| Name | Status | Preview | Comments | Updated (UTC) |\n| :--- | :----- | :------ | :------- | :------ |\n| **react-compiler-playground** | ✅ Ready ([Inspect](https://vercel.com/fbopensource/react-compiler-playground/Csd3qKo9Le2q36HaEVpci8UBvjk1)) | [Visit Preview](https://vercel.live/open-feedback/react-compiler-playground-git-fork-yungster-ea8ae1-fbopensource.vercel.app?via=pr-comment-visit-preview-link&passThrough=1) | 💬 [**Add feedback**](https://vercel.live/open-feedback/react-compiler-playground-git-fork-yungster-ea8ae1-fbopensource.vercel.app?via=pr-comment-feedback-link) | Oct 16, 2024 5:56pm |\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2024-10-16T17:54:49Z"
+					},
+					{
+						"id": 2417534449,
+						"body": "\n<!--\n  0 failure: \n  0 warning: \n  \n  1 markdown notices\n  DangerID: danger-id-stable;\n-->\n\n\n\n\nComparing: 77b637d61200eef4dca4cbe4258da358d6337c7b...7e823db2e4fe6dac62c3a10098c031ce07a9ac2f\n\n## Critical size changes\n\nIncludes critical production bundles, as well as any change greater than 2%:\n\n\n  | Name | +/- | Base | Current | +/- gzip | Base gzip | Current gzip |\n  | ---- | --- | ---- | ------- | -------- | --------- | ------------ |\n| [oss-stable/react-dom/cjs/react-dom.production.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/oss-stable/react-dom/cjs/react-dom.production.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 6.68 kB | 6.68 kB | = | 1.83 kB | 1.82 kB\n| [oss-stable/react-dom/cjs/react-dom-client.production.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/oss-stable/react-dom/cjs/react-dom-client.production.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 506.53 kB | 506.53 kB | = | 90.68 kB | 90.68 kB\n| [oss-experimental/react-dom/cjs/react-dom.production.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/oss-experimental/react-dom/cjs/react-dom.production.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 6.69 kB | 6.69 kB | = | 1.83 kB | 1.83 kB\n| [oss-experimental/react-dom/cjs/react-dom-client.production.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/oss-experimental/react-dom/cjs/react-dom-client.production.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 511.47 kB | 511.47 kB | = | 91.40 kB | 91.40 kB\n| [facebook-www/ReactDOM-prod.classic.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/facebook-www/ReactDOM-prod.classic.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 603.93 kB | 603.93 kB | = | 106.89 kB | 106.89 kB\n| [facebook-www/ReactDOM-prod.modern.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/facebook-www/ReactDOM-prod.modern.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 580.15 kB | 580.15 kB | = | 102.97 kB | 102.97 kB\n| [react-native/shims/ReactNativeTypes.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/react-native/shims/ReactNativeTypes.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 8.63 kB | 8.32 kB | = | 2.35 kB | 2.18 kB\n\n## Significant size changes\n\nIncludes any change greater than 0.2%:\n\n\n<details>\n<summary>Expand to show</summary>\n\n  | Name | +/- | Base | Current | +/- gzip | Base gzip | Current gzip |\n  | ---- | --- | ---- | ------- | -------- | --------- | ------------ |\n| [react-native/shims/ReactNativeTypes.js](https://react-builds.vercel.app/commits/7e823db2e4fe6dac62c3a10098c031ce07a9ac2f/files/react-native/shims/ReactNativeTypes.js?compare=77b637d61200eef4dca4cbe4258da358d6337c7b) | **=** | 8.63 kB | 8.32 kB | = | 2.35 kB | 2.18 kB\n</details>\n\n\n<p align=\"right\">\n  Generated by :no_entry_sign: <a href=\"https://danger.systems/js\">dangerJS</a> against cae366915ae65834aeaf740316a41e287344777b\n</p>\n",
+						"author": "react-sizebot",
+						"createdAt": "2024-10-16T17:59:41Z"
+					}
+				],
+				"htmlUrl": "https://github.com/facebook/react/pull/31276"
+			}
+		},
+		{
+			"sha": "77b637d61200eef4dca4cbe4258da358d6337c7b",
+			"message": "Add Bridge types for Fusebox (#31274)\n\nNew types used by Fusebox\r\nhttps://github.com/facebookexperimental/rn-chrome-devtools-frontend/pull/117",
+			"user": "EdmondChuiHW",
+			"timestamp": "2024-10-16T15:45:24Z",
+			"author": {
+				"name": "Edmond Chui",
+				"email": "1967998+EdmondChuiHW@users.noreply.github.com",
+				"username": "EdmondChuiHW"
+			},
+			"files": {
+				"added": [],
+				"modified": ["packages/react-devtools-fusebox/src/frontend.d.ts"],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/react-devtools-fusebox/src/frontend.d.ts b/packages/react-devtools-fusebox/src/frontend.d.ts\nindex 74a88c36a85..52536739cca 100644\n--- a/packages/react-devtools-fusebox/src/frontend.d.ts\n+++ b/packages/react-devtools-fusebox/src/frontend.d.ts\n@@ -15,7 +15,9 @@ export type Wall = {\n };\n \n export type Bridge = {\n-  shutdown: () => void,\n+  addListener(event: string, listener: (params: unknown) => any): void;\n+  removeListener(event: string, listener: Function): void;\n+  shutdown: () => void;\n };\n export type Store = Object;\n export type BrowserTheme = 'dark' | 'light';\n",
+			"diffSize": 596,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 31274,
+				"title": "Add Bridge types for Fusebox",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "fusebox-bridge-types",
+				"baseBranch": "main",
+				"author": "EdmondChuiHW",
+				"body": "New types used by Fusebox https://github.com/facebookexperimental/rn-chrome-devtools-frontend/pull/117",
+				"labels": ["CLA Signed"],
+				"requestedReviewers": [],
+				"reviews": [
+					{
+						"id": 2372860679,
+						"state": "APPROVED",
+						"author": "hoxyq"
+					}
+				],
+				"comments": [
+					{
+						"id": 2417010848,
+						"body": "[vc]: #JXBspRbND7fpJ1TLfLeCd4xfgD2bORIyBU+PPtyYkJc=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJyZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kIiwicm9vdERpcmVjdG9yeSI6ImNvbXBpbGVyL2FwcHMvcGxheWdyb3VuZCIsImluc3BlY3RvclVybCI6Imh0dHBzOi8vdmVyY2VsLmNvbS9mYm9wZW5zb3VyY2UvcmVhY3QtY29tcGlsZXItcGxheWdyb3VuZC81M3ZaRGZFZDhIb3p4aVRGR1pXdjNyd2h0M0p2IiwicHJldmlld1VybCI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmstZWRtb25kY2gtNjQyNzM3LWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIiwibmV4dENvbW1pdFN0YXR1cyI6IkRFUExPWUVEIiwibGl2ZUZlZWRiYWNrIjp7InJlc29sdmVkIjowLCJ1bnJlc29sdmVkIjowLCJ0b3RhbCI6MCwibGluayI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmstZWRtb25kY2gtNjQyNzM3LWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIn19XX0=\n**The latest updates on your projects**. Learn more about [Vercel for Git ↗︎](https://vercel.link/github-learn-more)\n\n| Name | Status | Preview | Comments | Updated (UTC) |\n| :--- | :----- | :------ | :------- | :------ |\n| **react-compiler-playground** | ✅ Ready ([Inspect](https://vercel.com/fbopensource/react-compiler-playground/53vZDfEd8HozxiTFGZWv3rwht3Jv)) | [Visit Preview](https://vercel.live/open-feedback/react-compiler-playground-git-fork-edmondch-642737-fbopensource.vercel.app?via=pr-comment-visit-preview-link&passThrough=1) | 💬 [**Add feedback**](https://vercel.live/open-feedback/react-compiler-playground-git-fork-edmondch-642737-fbopensource.vercel.app?via=pr-comment-feedback-link) | Oct 16, 2024 2:30pm |\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2024-10-16T14:28:35Z"
+					}
+				],
+				"htmlUrl": "https://github.com/facebook/react/pull/31274"
+			}
+		},
+		{
+			"sha": "be94b108264e30873d4b679771e07ce14491e413",
+			"message": "[Flight] Enable sync stack traces for errors and console replay (#31270)\n\nThis was gated behind `enableOwnerStacks` since they share some code\r\npaths but it's really part of `enableServerComponentLogs`.\r\n\r\nThis just includes the server-side regular stack on Error/replayed logs\r\nbut doesn't use console.createTask and doesn't include owner stacks.",
+			"user": "sebmarkbage",
+			"timestamp": "2024-10-16T14:57:08Z",
+			"author": {
+				"name": "Sebastian Markbåge",
+				"email": "sebastian@calyptus.eu",
+				"username": "sebmarkbage"
+			},
+			"files": {
+				"added": [],
+				"modified": [
+					"packages/react-client/src/ReactFlightClient.js",
+					"packages/react-client/src/__tests__/ReactFlight-test.js"
+				],
+				"removed": []
+			},
+			"diff": "diff --git a/packages/react-client/src/ReactFlightClient.js b/packages/react-client/src/ReactFlightClient.js\nindex 141058fb9df..2a6165c932a 100644\n--- a/packages/react-client/src/ReactFlightClient.js\n+++ b/packages/react-client/src/ReactFlightClient.js\n@@ -46,6 +46,7 @@ import {\n   enableRefAsProp,\n   enableFlightReadableStream,\n   enableOwnerStacks,\n+  enableServerComponentLogs,\n } from 'shared/ReactFeatureFlags';\n \n import {\n@@ -1928,7 +1929,7 @@ function resolveErrorDev(\n   }\n \n   let error;\n-  if (!enableOwnerStacks) {\n+  if (!enableOwnerStacks && !enableServerComponentLogs) {\n     // Executing Error within a native stack isn't really limited to owner stacks\n     // but we gate it behind the same flag for now while iterating.\n     // eslint-disable-next-line react-internal/prod-error-codes\n@@ -2463,9 +2464,7 @@ function resolveConsoleEntry(\n   const env = payload[3];\n   const args = payload.slice(4);\n \n-  if (!enableOwnerStacks) {\n-    // Printing with stack isn't really limited to owner stacks but\n-    // we gate it behind the same flag for now while iterating.\n+  if (!enableOwnerStacks && !enableServerComponentLogs) {\n     bindToConsole(methodName, args, env)();\n     return;\n   }\ndiff --git a/packages/react-client/src/__tests__/ReactFlight-test.js b/packages/react-client/src/__tests__/ReactFlight-test.js\nindex 7e1017276c9..92efd84bf0d 100644\n--- a/packages/react-client/src/__tests__/ReactFlight-test.js\n+++ b/packages/react-client/src/__tests__/ReactFlight-test.js\n@@ -1346,7 +1346,10 @@ describe('ReactFlight', () => {\n         errors: [\n           {\n             message: 'This is an error',\n-            stack: gate(flags => flags.enableOwnerStacks)\n+            stack: gate(\n+              flags =>\n+                flags.enableOwnerStacks || flags.enableServerComponentLogs,\n+            )\n               ? expect.stringContaining(\n                   'Error: This is an error\\n' +\n                     '    at eval (eval at testFunction (eval at createFakeFunction (**), <anonymous>:1:35)\\n' +\n@@ -1378,7 +1381,17 @@ describe('ReactFlight', () => {\n               ['file:///testing.js', 'Server'],\n               [__filename, 'Server'],\n             ]\n-          : [],\n+          : gate(flags => flags.enableServerComponentLogs)\n+            ? [\n+                // TODO: What should we request here? The outer (<anonymous>) or the inner (inspected-page.html)?\n+                ['inspected-page.html:29:11), <anonymous>', 'Server'],\n+                [\n+                  'file://~/(some)(really)(exotic-directory)/ReactFlight-test.js',\n+                  'Server',\n+                ],\n+                ['file:///testing.js', 'Server'],\n+              ]\n+            : [],\n       });\n     } else {\n       expect(errors.map(getErrorForJestMatcher)).toEqual([\n@@ -2940,7 +2953,11 @@ describe('ReactFlight', () => {\n       .join('\\n')\n       .replaceAll(\n         ' (/',\n-        gate(flags => flags.enableOwnerStacks) ? ' (file:///' : ' (/',\n+        gate(\n+          flags => flags.enableOwnerStacks || flags.enableServerComponentLogs,\n+        )\n+          ? ' (file:///'\n+          : ' (/',\n       ); // The eval will end up normalizing these\n \n     let sawReactPrefix = false;\n@@ -2974,6 +2991,12 @@ describe('ReactFlight', () => {\n         'third-party',\n         'third-party',\n       ]);\n+    } else if (__DEV__ && gate(flags => flags.enableServerComponentLogs)) {\n+      expect(environments.slice(0, 3)).toEqual([\n+        'third-party',\n+        'third-party',\n+        'third-party',\n+      ]);\n     } else {\n       expect(environments).toEqual([]);\n     }\n",
+			"diffSize": 3598,
+			"diffTruncated": false,
+			"filterResult": {
+				"included": true
+			},
+			"associatedPR": {
+				"number": 31270,
+				"title": "[Flight] Enable sync stack traces for errors and console replay",
+				"state": "closed",
+				"draft": false,
+				"merged": true,
+				"branch": "sourcemaprsc",
+				"baseBranch": "main",
+				"author": "sebmarkbage",
+				"body": "This was gated behind `enableOwnerStacks` since they share some code paths but it's really part of `enableServerComponentLogs`.\r\n\r\nThis just includes the server-side regular stack on Error/replayed logs but doesn't use console.createTask and doesn't include owner stacks.",
+				"labels": ["CLA Signed", "React Core Team"],
+				"requestedReviewers": [],
+				"reviews": [
+					{
+						"id": 2371933038,
+						"state": "APPROVED",
+						"author": "eps1lon"
+					}
+				],
+				"comments": [
+					{
+						"id": 2415187696,
+						"body": "[vc]: #5mkqB8446s7c9kt5n+MqYeBBcJHcoLui83smC3oiD6w=:eyJpc01vbm9yZXBvIjp0cnVlLCJ0eXBlIjoiZ2l0aHViIiwicHJvamVjdHMiOlt7Im5hbWUiOiJyZWFjdC1jb21waWxlci1wbGF5Z3JvdW5kIiwicm9vdERpcmVjdG9yeSI6ImNvbXBpbGVyL2FwcHMvcGxheWdyb3VuZCIsImluc3BlY3RvclVybCI6Imh0dHBzOi8vdmVyY2VsLmNvbS9mYm9wZW5zb3VyY2UvcmVhY3QtY29tcGlsZXItcGxheWdyb3VuZC83UXlvVEFSR1p6ZTQ3b1lMV29zeU1nbUxyNEhTIiwicHJldmlld1VybCI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmstc2VibWFya2ItNDA5NmRmLWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIiwibmV4dENvbW1pdFN0YXR1cyI6IkRFUExPWUVEIiwibGl2ZUZlZWRiYWNrIjp7InJlc29sdmVkIjowLCJ1bnJlc29sdmVkIjowLCJ0b3RhbCI6MCwibGluayI6InJlYWN0LWNvbXBpbGVyLXBsYXlncm91bmQtZ2l0LWZvcmstc2VibWFya2ItNDA5NmRmLWZib3BlbnNvdXJjZS52ZXJjZWwuYXBwIn19XX0=\n**The latest updates on your projects**. Learn more about [Vercel for Git ↗︎](https://vercel.link/github-learn-more)\n\n| Name | Status | Preview | Comments | Updated (UTC) |\n| :--- | :----- | :------ | :------- | :------ |\n| **react-compiler-playground** | ✅ Ready ([Inspect](https://vercel.com/fbopensource/react-compiler-playground/7QyoTARGZze47oYLWosyMgmLr4HS)) | [Visit Preview](https://vercel.live/open-feedback/react-compiler-playground-git-fork-sebmarkb-4096df-fbopensource.vercel.app?via=pr-comment-visit-preview-link&passThrough=1) | 💬 [**Add feedback**](https://vercel.live/open-feedback/react-compiler-playground-git-fork-sebmarkb-4096df-fbopensource.vercel.app?via=pr-comment-feedback-link) | Oct 15, 2024 9:23pm |\n\n",
+						"author": "vercel[bot]",
+						"createdAt": "2024-10-15T21:19:34Z"
+					},
+					{
+						"id": 2415193126,
+						"body": "\n<!--\n  0 failure: \n  0 warning: \n  \n  1 markdown notices\n  DangerID: danger-id-stable;\n-->\n\n\n\n\nComparing: 6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74...179c502813e6f56161578ceca645e6da9d36dc12\n\n## Critical size changes\n\nIncludes critical production bundles, as well as any change greater than 2%:\n\n\n  | Name | +/- | Base | Current | +/- gzip | Base gzip | Current gzip |\n  | ---- | --- | ---- | ------- | -------- | --------- | ------------ |\n| [oss-stable/react-dom/cjs/react-dom.production.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable/react-dom/cjs/react-dom.production.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 6.68 kB | 6.68 kB | = | 1.83 kB | 1.83 kB\n| [oss-stable/react-dom/cjs/react-dom-client.production.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable/react-dom/cjs/react-dom-client.production.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 506.53 kB | 506.53 kB | = | 90.68 kB | 90.68 kB\n| [oss-experimental/react-dom/cjs/react-dom.production.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-experimental/react-dom/cjs/react-dom.production.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 6.69 kB | 6.69 kB | = | 1.83 kB | 1.83 kB\n| [oss-experimental/react-dom/cjs/react-dom-client.production.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-experimental/react-dom/cjs/react-dom-client.production.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 511.47 kB | 511.47 kB | = | 91.40 kB | 91.40 kB\n| [facebook-www/ReactDOM-prod.classic.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/facebook-www/ReactDOM-prod.classic.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 603.93 kB | 603.93 kB | = | 106.89 kB | 106.89 kB\n| [facebook-www/ReactDOM-prod.modern.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/facebook-www/ReactDOM-prod.modern.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 580.15 kB | 580.15 kB | = | 102.97 kB | 102.97 kB\n\n## Significant size changes\n\nIncludes any change greater than 0.2%:\n\n\n<details>\n<summary>Expand to show</summary>\n\n  | Name | +/- | Base | Current | +/- gzip | Base gzip | Current gzip |\n  | ---- | --- | ---- | ------- | -------- | --------- | ------------ |\n| [oss-stable/react-client/cjs/react-client-flight.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable/react-client/cjs/react-client-flight.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 86.33 kB | 86.02 kB | = | 16.05 kB | 15.96 kB\n| [oss-stable-rc/react-client/cjs/react-client-flight.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable-rc/react-client/cjs/react-client-flight.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 86.31 kB | 85.99 kB | = | 16.03 kB | 15.93 kB\n| [oss-stable-semver/react-client/cjs/react-client-flight.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable-semver/react-client/cjs/react-client-flight.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 86.31 kB | 85.99 kB | = | 16.03 kB | 15.93 kB\n| [oss-stable/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 119.42 kB | 118.76 kB | = | 28.14 kB | 27.91 kB\n| [oss-stable-rc/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable-rc/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 119.40 kB | 118.74 kB | = | 28.12 kB | 27.89 kB\n| [oss-stable-semver/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js](https://react-builds.vercel.app/commits/179c502813e6f56161578ceca645e6da9d36dc12/files/oss-stable-semver/react-server-dom-esm/esm/react-server-dom-esm-client.browser.development.js?compare=6c4bbc783286bf6eebd9927cb52e8fec5ad4dd74) | **=** | 119.40 kB | 118.74 kB | = | 28.12 kB | 27.89 kB\n</details>\n\n\n<p align=\"right\">\n  Generated by :no_entry_sign: <a href=\"https://danger.systems/js\">dangerJS</a> against da8de9e51458f87fd4b0cf91b6f89b8bd0d06ab1\n</p>\n",
+						"author": "react-sizebot",
+						"createdAt": "2024-10-15T21:23:30Z"
+					}
+				],
+				"htmlUrl": "https://github.com/facebook/react/pull/31270"
+			}
+		}
+	]
+}

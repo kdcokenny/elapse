@@ -286,3 +286,29 @@ export interface WorkWeekScenariosIndex {
 		path: string; // Relative path to scenario directory
 	}>;
 }
+
+// =============================================================================
+// Weekly Report Fixture Types
+// =============================================================================
+
+/**
+ * Expected outcomes for weekly report assertions.
+ */
+export interface WeeklyExpectations {
+	ragStatus: "green" | "yellow" | "red";
+	shippedGroupCount: number;
+	activeBlockerCount: number;
+	resolvedBlockerCount: number;
+	wordCountUnder: number; // Should be < 500
+}
+
+/**
+ * A complete week scenario for weekly report E2E testing.
+ */
+export interface WeeklyScenario {
+	id: string;
+	name: string;
+	description: string;
+	days: Record<WorkDay, ProductionDayFixture>;
+	weeklyExpectations: WeeklyExpectations;
+}

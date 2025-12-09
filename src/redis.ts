@@ -1,39 +1,68 @@
 import Redis from "ioredis";
+import { DEFAULT_REDIS_URL } from "./config";
 import { logger } from "./logger";
 
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const REDIS_URL = process.env.REDIS_URL || DEFAULT_REDIS_URL;
+const IS_TEST = process.env.NODE_ENV === "test";
 
-// Default production Redis client
-const productionRedis = new Redis(REDIS_URL, {
-	maxRetriesPerRequest: null, // Required for BullMQ
-	enableReadyCheck: true,
+// Production Redis client - only created outside test environment
+let productionRedis: Redis | null = null;
 
-	retryStrategy: (times: number) => {
-		if (times > 10) {
-			logger.error("Redis connection failed after 10 retries");
-			return null; // Stop retrying
-		}
-		const delay = Math.min(Math.exp(times) * 100, 20000);
-		logger.warn({ attempt: times, delayMs: delay }, "Redis reconnecting");
-		return delay;
-	},
-});
+function getProductionRedis(): Redis {
+	if (!productionRedis) {
+		productionRedis = new Redis(REDIS_URL, {
+			maxRetriesPerRequest: null, // Required for BullMQ
+			enableReadyCheck: true,
 
-// Log connection events
-productionRedis.on("connect", () => logger.info("Redis connected"));
-productionRedis.on("ready", () => logger.info("Redis ready"));
-productionRedis.on("error", (err) => logger.error({ err }, "Redis error"));
-productionRedis.on("close", () => logger.warn("Redis connection closed"));
-productionRedis.on("reconnecting", () => logger.info("Redis reconnecting"));
+			retryStrategy: (times: number) => {
+				if (times > 10) {
+					logger.error("Redis connection failed after 10 retries");
+					return null; // Stop retrying
+				}
+				const delay = Math.min(Math.exp(times) * 100, 20000);
+				logger.warn({ attempt: times, delayMs: delay }, "Redis reconnecting");
+				return delay;
+			},
+
+			// Reconnect on READONLY errors (Redis failover scenarios)
+			reconnectOnError: (err: Error) => {
+				if (err.message.includes("READONLY")) {
+					logger.warn("Redis READONLY detected, triggering reconnect");
+					return true;
+				}
+				return false;
+			},
+		});
+
+		// Log connection events
+		productionRedis.on("connect", () => logger.info("Redis connected"));
+		productionRedis.on("ready", () => logger.info("Redis ready"));
+		productionRedis.on("error", (err) => logger.error({ err }, "Redis error"));
+		productionRedis.on("close", () => logger.warn("Redis connection closed"));
+		productionRedis.on("reconnecting", () => logger.info("Redis reconnecting"));
+		productionRedis.on("end", () =>
+			logger.error("Redis connection ended permanently, no more reconnections"),
+		);
+	}
+	return productionRedis;
+}
 
 // Allow injection of mock Redis for testing
-let currentRedis: Redis = productionRedis;
+let currentRedis: Redis | null = null;
 
 /**
  * Get the current Redis client (production or test mock).
  */
 export function getRedis(): Redis {
-	return currentRedis;
+	if (currentRedis) {
+		return currentRedis;
+	}
+	if (IS_TEST) {
+		throw new Error(
+			"Redis client not initialized in test environment. Call setRedisClient() first.",
+		);
+	}
+	return getProductionRedis();
 }
 
 /**
@@ -49,7 +78,12 @@ export function setRedisClient(client: Redis): () => void {
 }
 
 // Export for backwards compatibility (BullMQ needs direct access)
-export const redis = productionRedis;
+// Lazily initialized - will throw in test environment if accessed directly
+export const redis = new Proxy({} as Redis, {
+	get(_, prop) {
+		return Reflect.get(getProductionRedis(), prop);
+	},
+});
 
 // Redis key helpers
 
@@ -94,6 +128,30 @@ export async function getLastReportTimestamp(): Promise<string | null> {
 export async function setLastReportTimestamp(timestamp: string): Promise<void> {
 	const client = getRedis();
 	await client.set(LAST_REPORT_KEY, timestamp);
+}
+
+// ============================================================================
+// Weekly Report Timestamp
+// ============================================================================
+
+const LAST_WEEKLY_REPORT_KEY = `${KEY_PREFIX}:lastWeeklyReportTimestamp`;
+
+/**
+ * Get the timestamp of the last successful weekly report.
+ */
+export async function getLastWeeklyReportTimestamp(): Promise<string | null> {
+	const client = getRedis();
+	return client.get(LAST_WEEKLY_REPORT_KEY);
+}
+
+/**
+ * Store the timestamp watermark after a successful weekly report.
+ */
+export async function setLastWeeklyReportTimestamp(
+	timestamp: string,
+): Promise<void> {
+	const client = getRedis();
+	await client.set(LAST_WEEKLY_REPORT_KEY, timestamp);
 }
 
 // ============================================================================
@@ -377,11 +435,11 @@ export async function getPRBlockers(
 	return result;
 }
 
-/** TTL for resolved blockers before cleanup (7 days) */
-const RESOLVED_BLOCKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** TTL for resolved blockers before cleanup (14 days for weekly reports) */
+const RESOLVED_BLOCKER_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
 /**
- * Cleanup resolved blockers older than 7 days.
+ * Cleanup resolved blockers older than 14 days.
  * Called after daily report to prevent blocker accumulation.
  * Returns count of deleted entries.
  */
@@ -568,10 +626,26 @@ export async function deleteBranchCommits(
 /**
  * Get all branch commit keys for cleanup iteration.
  * Returns keys matching elapse:branch:*:commits pattern.
+ * Uses SCAN instead of KEYS to avoid blocking Redis on large datasets.
  */
 export async function getAllBranchKeys(): Promise<string[]> {
 	const client = getRedis();
-	return client.keys(`${KEY_PREFIX}:branch:*:commits`);
+	const keys: string[] = [];
+	let cursor = "0";
+
+	do {
+		const [nextCursor, batch] = await client.scan(
+			cursor,
+			"MATCH",
+			`${KEY_PREFIX}:branch:*:commits`,
+			"COUNT",
+			100,
+		);
+		cursor = nextCursor;
+		keys.push(...batch);
+	} while (cursor !== "0");
+
+	return keys;
 }
 
 /**
@@ -766,4 +840,138 @@ export async function getAllPRDataForDate(
 	}
 
 	return { openPRs, mergedPRs, directCommits };
+}
+
+/**
+ * Get all PR data for a weekly report.
+ * Aggregates across multiple days and resolves all blocker states.
+ */
+export async function getWeeklyPRData(
+	weekStart: string,
+	weekEnd: string,
+	dateStrings: string[],
+): Promise<{
+	mergedPRs: Map<number, PRReportData & { blockersResolved: string[] }>;
+	openPRs: Map<number, PRReportData>;
+	activeBlockers: Array<{
+		prNumber: number;
+		key: string;
+		blocker: PRBlockerEntry;
+		meta: PRMetadata;
+	}>;
+	resolvedBlockers: Array<{
+		prNumber: number;
+		blocker: PRBlockerEntry;
+		resolvedAt: string;
+	}>;
+}> {
+	// Get all merged PRs across the week
+	const mergedPRNumbers = new Set<number>();
+	for (const date of dateStrings) {
+		const dayMerged = await getMergedPRsForDay(date);
+		for (const pr of dayMerged) {
+			mergedPRNumbers.add(pr);
+		}
+	}
+
+	// Get all open PRs
+	const openPRNumbers = await getAllOpenPRNumbers();
+
+	// Union of all PRs
+	const allPRNumbers = [...new Set([...mergedPRNumbers, ...openPRNumbers])];
+
+	// Fetch all PR data
+	const prDataPromises = allPRNumbers.map(async (prNumber) => {
+		const [meta, blockers] = await Promise.all([
+			getPRMetadata(prNumber),
+			getPRBlockers(prNumber),
+		]);
+		return { prNumber, meta, blockers };
+	});
+
+	const prDataResults = await Promise.all(prDataPromises);
+
+	const mergedPRs = new Map<
+		number,
+		PRReportData & { blockersResolved: string[] }
+	>();
+	const openPRs = new Map<number, PRReportData>();
+	const activeBlockers: Array<{
+		prNumber: number;
+		key: string;
+		blocker: PRBlockerEntry;
+		meta: PRMetadata;
+	}> = [];
+	const resolvedBlockers: Array<{
+		prNumber: number;
+		blocker: PRBlockerEntry;
+		resolvedAt: string;
+	}> = [];
+
+	for (const { prNumber, meta, blockers } of prDataResults) {
+		if (!meta) continue;
+
+		// Get branch commits
+		const branchCommits = await getBranchCommitsForPR(
+			meta.repo,
+			meta.branch,
+			meta.mergedAt,
+		);
+
+		const translations: PRTranslation[] = branchCommits.map((c) => ({
+			sha: c.sha,
+			summary: c.summary,
+			category: c.category,
+			significance: c.significance,
+			author: c.author,
+			timestamp: c.timestamp,
+		}));
+
+		// Process blockers
+		for (const [key, blocker] of blockers) {
+			if (blocker.resolvedAt) {
+				// Check if resolved within the week
+				if (blocker.resolvedAt >= weekStart && blocker.resolvedAt <= weekEnd) {
+					resolvedBlockers.push({
+						prNumber,
+						blocker,
+						resolvedAt: blocker.resolvedAt,
+					});
+				}
+			} else {
+				// Active blocker
+				activeBlockers.push({ prNumber, key, blocker, meta });
+			}
+		}
+
+		// Categorize PR
+		const isMergedInWeek =
+			meta.status === "merged" &&
+			meta.mergedAt &&
+			meta.mergedAt >= weekStart &&
+			meta.mergedAt <= weekEnd;
+
+		if (isMergedInWeek) {
+			const blockersResolvedList = Array.from(blockers.values())
+				.filter((b) => b.resolvedAt)
+				.map((b) => b.description);
+
+			mergedPRs.set(prNumber, {
+				meta,
+				translations,
+				blockers,
+				hasActivityToday: false,
+				blockersResolved: blockersResolvedList,
+			});
+		} else if (meta.status === "open") {
+			openPRs.set(prNumber, {
+				meta,
+				translations,
+				blockers,
+				hasActivityToday: false,
+			});
+		}
+	}
+
+	return { mergedPRs, openPRs, activeBlockers, resolvedBlockers };
 }

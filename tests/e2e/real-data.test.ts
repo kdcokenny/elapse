@@ -1,7 +1,7 @@
 /**
  * E2E Tests with Real GitHub Data
  *
- * Uses real commit fixtures collected from Excalidraw to test the full pipeline including:
+ * Uses real commit fixtures collected from React to test the full pipeline including:
  * - Branch-first storage (commits stored by branch, resolved to PRs at read time)
  * - Commit translation (mocked for speed, real data for accuracy)
  * - PR-centric storage

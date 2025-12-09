@@ -16,13 +16,13 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { generateReport } from "../../src/daily-reporter";
 import {
 	addBranchCommit,
 	createOrUpdatePR,
 	recordPRMerged,
 	setPRStatus,
 } from "../../src/redis";
-import { generateReport } from "../../src/reporter";
 import { initTestRedis, resetTestRedis, restoreRedis } from "./test-redis";
 
 describe("Since Last Report E2E", () => {

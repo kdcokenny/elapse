@@ -9,6 +9,7 @@ import { analyzeComment, translateDiff } from "./ai";
 import { classifyBranch } from "./core/branches";
 import { stripOversizedFiles } from "./core/diff";
 import { getPrivateKey } from "./credentials";
+import { processReportJob, type ReportJob } from "./daily-reporter";
 import { GitHubAPIError, NonRetryableError } from "./errors";
 import { workerLogger } from "./logger";
 import {
@@ -19,8 +20,11 @@ import {
 	resolvePRBlocker,
 	setPRBlocker,
 } from "./redis";
-import { processReportJob, type ReportJob } from "./reporter";
 import type { CommentJob, DigestJob } from "./webhook";
+import {
+	processWeeklyReportJob,
+	type WeeklyReportJob,
+} from "./weekly-reporter";
 
 const QUEUE_NAME = "elapse";
 const LARGE_DIFF_WARNING_SIZE = 200000; // 200KB - log warning for very large diffs
@@ -281,7 +285,7 @@ async function processCommentJob(
 }
 
 // Job type union for worker
-type ElapseJob = DigestJob | CommentJob | ReportJob;
+type ElapseJob = DigestJob | CommentJob | ReportJob | WeeklyReportJob;
 
 /**
  * Process any job - routes to the appropriate processor.
@@ -293,8 +297,14 @@ async function processJob(job: Job<ElapseJob>): Promise<unknown> {
 			return processDigestJob(job as Job<DigestJob>);
 		case "comment":
 			return processCommentJob(job as Job<CommentJob>);
-		case "report":
+		case "report": {
+			// Handle both daily and weekly reports
+			const reportData = job.data as ReportJob | WeeklyReportJob;
+			if ("type" in reportData && reportData.type === "weekly") {
+				return processWeeklyReportJob(job as Job<WeeklyReportJob>);
+			}
 			return processReportJob(job as Job<ReportJob>);
+		}
 		default:
 			throw new UnrecoverableError(`Unknown job type: ${job.name}`);
 	}

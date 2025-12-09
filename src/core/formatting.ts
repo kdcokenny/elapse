@@ -2,6 +2,7 @@
  * Pure functions for formatting output messages.
  */
 
+import { getTimezone } from "../config";
 import type { UserBlockerGroup } from "./blockers";
 
 /**
@@ -237,7 +238,137 @@ export function formatNoActivityReport(date: string): string {
  * Get today's date in YYYY-MM-DD format.
  */
 export function getTodayDate(timezone?: string): string {
-	const tz = timezone || process.env.TEAM_TIMEZONE || "America/New_York";
+	const tz = timezone || getTimezone();
 
 	return new Date().toLocaleDateString("en-CA", { timeZone: tz });
+}
+
+// =============================================================================
+// Weekly Report Formatting
+// =============================================================================
+
+import { formatRAGStatus } from "./weekly-status";
+import type { RAGStatus, WeeklyStats, WeeklySummary } from "./weekly-types";
+
+/**
+ * Format the "Week of" date string.
+ * Returns: "February 24, 2025"
+ */
+function formatWeekOf(date: Date): string {
+	return date.toLocaleDateString("en-US", {
+		year: "numeric",
+		month: "long",
+		day: "numeric",
+	});
+}
+
+/**
+ * Flags indicating which data was available when generating the report.
+ * Only used for CONTENT sections (Next Week).
+ * STATUS sections (Blockers, Help Needed) are always shown.
+ */
+export interface WeeklyDataFlags {
+	hasInProgress: boolean;
+}
+
+/**
+ * Format a weekly report for Discord.
+ * Stakeholder-ready output under 500 words.
+ *
+ * DESIGN: Status sections vs Content sections
+ * - BLOCKERS & RISKS: STATUS - always shown (confirms "all clear" or lists issues)
+ * - HELP NEEDED: STATUS - always shown (confirms no escalations or lists asks)
+ * - CARRYING INTO NEXT WEEK: CONTENT - only shown if in-progress work exists
+ *
+ * Status sections stay visible so executives can quickly confirm "we checked"
+ * rather than wondering if the report is incomplete.
+ */
+export function formatWeeklyReport(
+	weekOf: Date,
+	ragStatus: RAGStatus,
+	summary: WeeklySummary,
+	stats: WeeklyStats,
+	dataFlags?: WeeklyDataFlags,
+): string {
+	const lines: string[] = [];
+
+	// Default to showing next week if no flags provided (backwards compatibility)
+	const flags = dataFlags || { hasInProgress: true };
+
+	// Header
+	lines.push(
+		`📊 **Weekly Engineering Summary — Week of ${formatWeekOf(weekOf)}**`,
+	);
+	lines.push("");
+
+	// BLUF (Bottom Line Up Front)
+	lines.push(`**Status:** ${formatRAGStatus(ragStatus)}`);
+	lines.push(`**Top Line:** ${summary.executiveSummary}`);
+	lines.push("");
+	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+	lines.push("");
+
+	// Shipped section
+	if (summary.shippedGroups.length > 0) {
+		lines.push("🚢 **SHIPPED THIS WEEK**");
+		lines.push("");
+		for (const group of summary.shippedGroups) {
+			const contributors = group.contributors.join(", ");
+			lines.push(`• **${group.theme}** — ${group.summary} (${contributors})`);
+		}
+		lines.push("");
+	}
+
+	// STATUS: Blockers section - always shown, with deterministic fallback
+	lines.push("⚠️ **BLOCKERS & RISKS**");
+	lines.push("");
+	lines.push(`• ${summary.blockersAndRisks ?? "None active"}`);
+	lines.push("");
+
+	// STATUS: Help Needed section - always shown, with deterministic fallback
+	lines.push("🙋 **HELP NEEDED**");
+	lines.push("");
+	lines.push(`• ${summary.helpNeeded ?? "None this week"}`);
+	lines.push("");
+
+	// CONTENT: Next Week section - only if we had in-progress data
+	if (flags.hasInProgress && summary.nextWeek) {
+		lines.push("📍 **CARRYING INTO NEXT WEEK**");
+		lines.push("");
+		lines.push(`• ${summary.nextWeek}`);
+		lines.push("");
+	}
+
+	// Footer separator
+	lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+	// Stats footer
+	const statParts: string[] = [];
+	statParts.push(`${stats.totalMerged} PRs merged`);
+	if (stats.blockersResolved > 0) {
+		statParts.push(`${stats.blockersResolved} blockers resolved`);
+	}
+	if (stats.activeBlockerCount > 0) {
+		statParts.push(`${stats.activeBlockerCount} active blockers`);
+	}
+	if (stats.inProgressCount > 0) {
+		statParts.push(`${stats.inProgressCount} in progress`);
+	}
+	lines.push(statParts.join(" • "));
+
+	return lines.join("\n");
+}
+
+/**
+ * Format a "no activity" weekly report.
+ */
+export function formatNoActivityWeeklyReport(weekOf: Date): string {
+	return `📊 **Weekly Engineering Summary — Week of ${formatWeekOf(weekOf)}**
+
+**Status:** 🟢 On Track
+**Top Line:** A quiet week with no significant engineering activity.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+0 PRs merged
+`;
 }

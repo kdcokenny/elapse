@@ -31,3 +31,6 @@ coverage/
 
 # Redis
 dump.rdb
+
+# Temporary files
+.tmp/
