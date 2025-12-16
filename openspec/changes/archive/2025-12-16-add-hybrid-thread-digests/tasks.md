@@ -50,10 +50,10 @@
 - [x] 6.1 Update E2E tests to use hybrid format (daily thread content)
 - [x] 6.2 Update E2E tests to use hybrid format (weekly thread content)
 - [x] 6.3 Update validation functions for new thread content format
-- [ ] 6.4 Add E2E test for fallback behavior on thread failure
-- [ ] 6.5 Add E2E test for RAG status color thresholds
-- [ ] 6.6 Manual validation: verify embed renders on Discord mobile and desktop
-- [ ] 6.7 Manual validation: verify thread auto-archive behavior
+- [x] 6.4 Add E2E test for fallback behavior on thread failure
+- [x] 6.5 Add E2E test for RAG status color thresholds
+- [x] 6.6 Manual validation: verify embed renders on Discord mobile and desktop
+- [x] 6.7 Manual validation: verify thread auto-archive behavior
 
 ## 7. Cleanup
 
