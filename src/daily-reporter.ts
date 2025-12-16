@@ -18,13 +18,15 @@ import {
 import {
 	type ActivityStats,
 	type BranchSummary,
+	type DailyHybridData,
 	type FeatureSummary,
-	formatFeatureCentricReport,
-	formatNoActivityReport,
+	formatDailyMainEmbed,
+	formatDailyThreadContent,
+	getThreadName,
 	getTodayDate,
 } from "./core/formatting";
 import { getWatermark } from "./core/watermark";
-import { sendToDiscord } from "./discord";
+import { sendHybridToDiscord } from "./discord";
 import { reportLogger } from "./logger";
 import {
 	cleanupResolvedBlockers,
@@ -42,13 +44,13 @@ export interface ReportJob {
 }
 
 /**
- * Generate the daily report content.
- * Returns both the report content and the watermark timestamp for idempotent updates.
+ * Generate the daily report data.
+ * Returns both the hybrid data and the watermark timestamp for idempotent updates.
  */
 async function generateReport(
 	date: string,
 	sinceTimestamp?: string,
-): Promise<{ content: string | null; watermark: string }> {
+): Promise<{ data: DailyHybridData | null; watermark: string }> {
 	const log = reportLogger.child({
 		date,
 		mode: "pr-centric",
@@ -74,7 +76,7 @@ async function generateReport(
 
 	if (!hasMerged && !hasOpen && !hasDirect && totalBlockers === 0) {
 		log.info("No PR activity to report for date");
-		return { content: formatNoActivityReport(date), watermark };
+		return { data: null, watermark };
 	}
 
 	log.debug(
@@ -199,17 +201,18 @@ async function generateReport(
 		staleReviews.length === 0
 	) {
 		log.info("No activity to report for date");
-		return { content: formatNoActivityReport(date), watermark };
+		return { data: null, watermark };
 	}
 
-	const report = formatFeatureCentricReport(
+	// Build hybrid data for embed + thread formatting
+	const hybridData: DailyHybridData = {
 		date,
 		blockerGroups,
-		featureSummaries,
-		progressSummaries,
+		shipped: featureSummaries,
+		progress: progressSummaries,
 		staleReviews,
 		stats,
-	);
+	};
 
 	log.info(
 		{
@@ -221,7 +224,7 @@ async function generateReport(
 		"PR-centric report generated",
 	);
 
-	return { content: report, watermark };
+	return { data: hybridData, watermark };
 }
 
 /**
@@ -245,16 +248,26 @@ async function processReportJob(
 			"Generating report since timestamp",
 		);
 
-		const { content, watermark } = await generateReport(date, sinceTimestamp);
+		const { data, watermark } = await generateReport(date, sinceTimestamp);
 
-		if (!content) {
+		if (!data) {
 			log.info("No content to report");
 			// Still update watermark on no-content to avoid re-querying same window
 			await setLastReportTimestamp(watermark);
 			return { sent: false };
 		}
 
-		await sendToDiscord(content, "daily");
+		// Format and send hybrid report (embed + thread)
+		const embed = formatDailyMainEmbed(data);
+		const threadContent = formatDailyThreadContent(data);
+		const threadName = getThreadName("daily", date);
+
+		await sendHybridToDiscord({
+			embed,
+			threadName,
+			threadContent,
+			type: "daily",
+		});
 
 		// Store watermark after successful send (idempotent - same data = same watermark)
 		await setLastReportTimestamp(watermark);

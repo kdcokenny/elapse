@@ -113,22 +113,26 @@ export interface FormatValidationResult {
 }
 
 /**
- * Validate that a report follows the research document format.
+ * Validate that a daily report thread content follows the research document format.
+ * Thread content is the full breakdown posted in the Discord thread.
+ *
  * Checks:
- * 1. Header format (Daily Engineering Summary)
+ * 1. Header format (Full Details —)
  * 2. Section order (Blockers → Awaiting Review → Shipped → In Progress → Stats)
  * 3. No raw technical data (SHAs, diffs)
  * 4. PR traceability (PR #xxx present)
  * 5. Age badges format (if blockers present)
  * 6. Stale review format (if awaiting review present)
+ *
+ * Note: "Daily Engineering Summary" header is now in the main embed, not thread content.
  */
 export function validateResearchFormat(report: string): FormatValidationResult {
 	const errors: string[] = [];
 	const warnings: string[] = [];
 
-	// 1. Header check
-	if (!report.includes("Daily Engineering Summary")) {
-		errors.push("Missing 'Daily Engineering Summary' header");
+	// 1. Header check - thread content starts with "Full Details —"
+	if (!report.includes("Full Details —")) {
+		errors.push("Missing 'Full Details —' header");
 	}
 
 	// 2. Section order check (Blockers → Awaiting Review → Shipped → Progress → Stats)

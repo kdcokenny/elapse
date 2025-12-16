@@ -111,6 +111,7 @@ import {
 	test,
 } from "bun:test";
 import { translateDiff } from "../../src/ai";
+import { formatWeeklyThreadContent } from "../../src/core/formatting";
 import {
 	addBranchCommit,
 	createOrUpdatePR,
@@ -307,8 +308,8 @@ describe("E2E: Weekly Report with Real AI", () => {
 			console.log(`PRs merged: ${mergedPRs.size}`);
 			console.log(`Blocker PR #31273: OPEN with 2 blockers`);
 
-			const { content: report, watermark } =
-				await generateWeeklyReport(reportDate);
+			const { data, watermark } = await generateWeeklyReport(reportDate);
+			const report = data ? formatWeeklyThreadContent(data) : null;
 
 			console.log(`\n${"=".repeat(60)}`);
 			console.log(`WEEKLY REPORT OUTPUT (for manual verification)`);

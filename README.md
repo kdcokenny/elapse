@@ -122,18 +122,25 @@ GitHub Push → Probot → BullMQ → AI Translation → Redis → Reports → D
 
 ### Daily Reports
 
-Generated at 9 AM on weekdays. Includes:
+Generated at 9 AM on weekdays. Delivered as a color-coded embed in your Discord channel with full details in an auto-created thread. Includes:
 - Narrative summary of the day's work
 - Grouped by PR with translations
 - Blocker callouts for PRs with `CHANGES_REQUESTED` or stale reviews
 - "Awaiting Review" section for pending reviews
 
+Critical blockers (5+ days old) are surfaced directly in the main message for immediate visibility.
+
 ### Weekly Reports
 
-Executive-ready summaries generated on Fridays. Includes:
+Executive-ready summaries generated on Fridays. Delivered as a compact, color-coded embed with the RAG status visible at a glance. Full breakdown is posted in an auto-created thread for drill-down.
 
-- **RAG Status:** 🟢 On Track / 🟡 At Risk / 🔴 Blocked
+**Main message includes:**
+- **RAG Status:** 🟢 On Track / 🟡 At Risk / 🔴 Blocked (color-coded sidebar)
 - **Executive Summary:** 1-2 sentence top-line
+- **Key Stats:** PRs shipped, active blockers
+- **Escalations:** Critical blockers (5+ days) surfaced directly
+
+**Thread contains:**
 - **Shipped This Week:** Thematically grouped PRs (3-5 groups)
 - **Blockers & Risks:** Active blockers with age and mentions
 - **Help Needed:** Escalations requiring action

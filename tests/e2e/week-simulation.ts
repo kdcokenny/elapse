@@ -60,6 +60,7 @@
  */
 
 import { analyzeComment, translateDiff } from "../../src/ai";
+import { formatDailyThreadContent } from "../../src/core/formatting";
 import { generateReport } from "../../src/daily-reporter";
 import {
 	addBranchCommit,
@@ -247,8 +248,9 @@ async function main() {
 		console.log("-".repeat(70));
 
 		try {
-			const { content } = await generateReport(dateStr);
-			if (content) {
+			const { data } = await generateReport(dateStr);
+			if (data) {
+				const content = formatDailyThreadContent(data);
 				console.log(content);
 			} else {
 				console.log("(No report generated - no activity)");
