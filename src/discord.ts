@@ -75,6 +75,137 @@ export const THREAD_ARCHIVE_DURATION = {
 } as const;
 
 /**
+ * Maximum message length for thread content.
+ * Discord's limit is 2000, but we leave a buffer for edge cases.
+ */
+const MAX_THREAD_MESSAGE_LENGTH = 1900;
+
+/**
+ * Delay between posting thread chunks to maintain message order.
+ */
+const CHUNK_POST_DELAY_MS = 100;
+
+/**
+ * Split content into chunks that fit within Discord's message limit.
+ * Splits on newline boundaries to preserve formatting.
+ *
+ * @param content - The content to split
+ * @param maxLength - Maximum length per chunk (default: MAX_THREAD_MESSAGE_LENGTH)
+ * @returns Array of content chunks
+ */
+export function splitIntoChunks(
+	content: string,
+	maxLength: number = MAX_THREAD_MESSAGE_LENGTH,
+): string[] {
+	if (!content || content.length === 0) {
+		return [];
+	}
+
+	// Trim content and check if it's empty after trimming
+	const trimmedContent = content.trim();
+	if (trimmedContent.length === 0) {
+		return [];
+	}
+
+	if (trimmedContent.length <= maxLength) {
+		return [trimmedContent];
+	}
+
+	const chunks: string[] = [];
+	const lines = trimmedContent.split("\n");
+	let currentChunk = "";
+
+	for (const line of lines) {
+		// If adding this line would exceed the limit
+		if (currentChunk.length + line.length + 1 > maxLength) {
+			// Save current chunk if it has content
+			const trimmed = currentChunk.trim();
+			if (trimmed) {
+				chunks.push(trimmed);
+			}
+			// Start new chunk with this line
+			currentChunk = line;
+		} else {
+			// Add line to current chunk
+			currentChunk += (currentChunk ? "\n" : "") + line;
+		}
+	}
+
+	// Don't forget the last chunk
+	const lastTrimmed = currentChunk.trim();
+	if (lastTrimmed) {
+		chunks.push(lastTrimmed);
+	}
+
+	return chunks;
+}
+
+/**
+ * Send thread content as multiple messages if needed.
+ * Posts chunks sequentially with a small delay to maintain order.
+ *
+ * @param webhookUrl - Discord webhook URL
+ * @param threadId - Thread ID to post to
+ * @param content - Content to post (will be chunked if needed)
+ * @param log - Logger instance
+ */
+async function sendThreadContent(
+	webhookUrl: string,
+	threadId: string,
+	content: string,
+	log: typeof reportLogger,
+): Promise<void> {
+	const chunks = splitIntoChunks(content, MAX_THREAD_MESSAGE_LENGTH);
+
+	if (chunks.length === 0) {
+		log.warn({ threadId }, "No content to post to thread");
+		return;
+	}
+
+	for (let i = 0; i < chunks.length; i++) {
+		const chunk = chunks[i] as string; // Safe: loop bounds guarantee valid index
+
+		try {
+			const response = await fetch(`${webhookUrl}?thread_id=${threadId}`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ content: chunk }),
+				signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
+			});
+
+			if (!response.ok) {
+				log.warn(
+					{
+						chunkIndex: i,
+						chunkLength: chunk.length,
+						totalChunks: chunks.length,
+						status: response.status,
+						threadId,
+					},
+					"Failed to post thread chunk, continuing with remaining",
+				);
+			}
+		} catch (err) {
+			log.warn(
+				{
+					chunkIndex: i,
+					chunkLength: chunk.length,
+					totalChunks: chunks.length,
+					error: err instanceof Error ? err.message : String(err),
+					threadId,
+				},
+				"Failed to post thread chunk, continuing with remaining",
+			);
+		}
+
+		// Small delay between chunks to maintain order (skip after last chunk)
+		if (i < chunks.length - 1) {
+			await new Promise((resolve) => setTimeout(resolve, CHUNK_POST_DELAY_MS));
+		}
+	}
+}
+
+/**
  * Payload for hybrid Discord delivery.
  */
 export interface HybridDiscordPayload {
@@ -175,12 +306,18 @@ export async function sendHybridToDiscord(
 
 	// Step 1: Send embed with thread_name to create thread
 	// Use ?wait=true to get the message ID back
+	const archiveDuration =
+		type === "weekly"
+			? THREAD_ARCHIVE_DURATION.weekly
+			: THREAD_ARCHIVE_DURATION.daily;
+
 	const createResponse = await fetch(`${webhookUrl}?wait=true`, {
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({
 			embeds: [embed],
 			thread_name: threadName,
+			auto_archive_duration: archiveDuration,
 		}),
 		signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
 	});
@@ -217,22 +354,8 @@ export async function sendHybridToDiscord(
 	const threadId = messageData.id;
 	log.debug({ threadId }, "Thread created, posting details");
 
-	// Step 2: Send thread content to the created thread
-	const threadResponse = await fetch(`${webhookUrl}?thread_id=${threadId}`, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ content: threadContent }),
-		signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
-	});
-
-	if (!threadResponse.ok) {
-		// Thread content failed but main embed was sent - log warning but don't fail
-		log.warn(
-			{ status: threadResponse.status, threadId },
-			"Failed to post thread content, main embed was delivered",
-		);
-		return;
-	}
+	// Step 2: Send thread content to the created thread (chunked if needed)
+	await sendThreadContent(webhookUrl, threadId, threadContent, log);
 
 	log.info({ threadId }, "Hybrid report sent to Discord");
 }

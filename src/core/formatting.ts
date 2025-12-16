@@ -681,17 +681,24 @@ export function formatDailyMainEmbed(data: DailyHybridData): DiscordEmbed {
 		});
 	}
 
-	// Help Needed field (conditional - only if items exist)
-	if (helpNeeded.length > 0) {
+	// Escalation field (if old blockers exist - ≥5 days)
+	const topEscalation = escalations[0];
+
+	// Help Needed field - show if:
+	// 1. Multiple escalations exist (show count), OR
+	// 2. Single escalation but no ESCALATION field (keyword-based, not age-based)
+	// This avoids redundancy when single age-based escalation is already in ESCALATION
+	const showHelpNeeded =
+		helpNeeded.length > 1 ||
+		(helpNeeded.length === 1 && escalations.length === 0);
+
+	if (showHelpNeeded) {
 		fields.push({
 			name: "🙋 Help Needed",
 			value: `${helpNeeded.length} escalation${helpNeeded.length > 1 ? "s" : ""}`,
 			inline: true,
 		});
 	}
-
-	// Escalation field (if red status)
-	const topEscalation = escalations[0];
 	if (topEscalation) {
 		let escalationValue = `${topEscalation.description} — @${topEscalation.owner}`;
 		if (escalations.length > 1) {

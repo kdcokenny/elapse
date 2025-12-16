@@ -594,6 +594,91 @@ describe("Hybrid Formatting", () => {
 			const helpField = embed.fields?.find((f) => f.name.includes("Help"));
 			expect(helpField).toBeUndefined();
 		});
+
+		test("should NOT show Help Needed when single age-based escalation (already in ESCALATION)", () => {
+			// Single blocker aged 6 days - qualifies for both Help Needed AND ESCALATION
+			// Should NOT show Help Needed since it's redundant with ESCALATION field
+			const data: DailyHybridData = {
+				...baseDailyData,
+				blockerGroups: [
+					{
+						user: "alice",
+						blockerCount: 1,
+						oldestAge: "6 days",
+						blockers: [
+							{
+								description: "Security review needed",
+								branch: "feature/auth",
+								prNumber: 101,
+								repo: "test/repo",
+								age: "6 days",
+							},
+						],
+					},
+				],
+				stats: {
+					...baseDailyData.stats,
+					blockerCount: 1,
+					oldestBlockerAge: "6 days",
+				},
+			};
+
+			const embed = formatDailyMainEmbed(data);
+
+			// Should have ESCALATION field
+			const escalationField = embed.fields?.find((f) =>
+				f.name.includes("ESCALATION"),
+			);
+			expect(escalationField).toBeDefined();
+			expect(escalationField?.value).toContain("Security review");
+
+			// Should NOT have Help Needed field (would be redundant)
+			const helpField = embed.fields?.find((f) => f.name.includes("Help"));
+			expect(helpField).toBeUndefined();
+		});
+
+		test("should show Help Needed when single keyword-based escalation (not in ESCALATION)", () => {
+			// Single blocker aged 2 days with "waiting for" keyword - qualifies for Help Needed
+			// but NOT for ESCALATION (< 5 days)
+			// Should show Help Needed since ESCALATION won't show it
+			const data: DailyHybridData = {
+				...baseDailyData,
+				blockerGroups: [
+					{
+						user: "carol",
+						blockerCount: 1,
+						oldestAge: "2 days",
+						blockers: [
+							{
+								description: "Waiting for API keys from finance",
+								branch: "feature/payment",
+								prNumber: 201,
+								repo: "test/repo",
+								age: "2 days",
+							},
+						],
+					},
+				],
+				stats: {
+					...baseDailyData.stats,
+					blockerCount: 1,
+					oldestBlockerAge: "2 days",
+				},
+			};
+
+			const embed = formatDailyMainEmbed(data);
+
+			// Should NOT have ESCALATION field (blocker is < 5 days)
+			const escalationField = embed.fields?.find((f) =>
+				f.name.includes("ESCALATION"),
+			);
+			expect(escalationField).toBeUndefined();
+
+			// Should have Help Needed field (keyword-based, not shown elsewhere)
+			const helpField = embed.fields?.find((f) => f.name.includes("Help"));
+			expect(helpField).toBeDefined();
+			expect(helpField?.value).toBe("1 escalation");
+		});
 	});
 
 	describe("Stats Formatting", () => {
