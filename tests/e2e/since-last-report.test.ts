@@ -16,6 +16,7 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { formatDailyThreadContent } from "../../src/core/formatting";
 import { generateReport } from "../../src/daily-reporter";
 import {
 	addBranchCommit,
@@ -96,13 +97,14 @@ describe("Since Last Report E2E", () => {
 			await recordPRMerged(202, "2025-02-22");
 
 			// Monday report: query since Friday 9am
-			const { content, watermark } = await generateReport(
+			const { data, watermark } = await generateReport(
 				"2025-02-24", // Monday
 				fridayReportTime,
 			);
 
-			// Should have content (not null)
-			expect(content).not.toBeNull();
+			// Should have data (not null)
+			expect(data).not.toBeNull();
+			const content = data ? formatDailyThreadContent(data) : "";
 
 			// Content should mention both PRs (by PR number, since AI generates feature names)
 			expect(content).toContain("PR #201");
@@ -189,12 +191,12 @@ describe("Since Last Report E2E", () => {
 
 			// Second report using watermark as sinceTimestamp
 			// Should have no new activity (all items have timestamp <= watermark)
-			const { content } = await generateReport("2025-02-24", watermark);
+			const { data } = await generateReport("2025-02-24", watermark);
 
-			// Should have no content since all items were already reported
-			// Note: content may be formatNoActivityReport, not null
+			// Should have no new data since all items were already reported
+			// data may be null (no activity) or have empty arrays
 			// The key is that the PR shouldn't appear as new activity
-			expect(content).toBeDefined();
+			expect(data === null || data.shipped.length === 0).toBe(true);
 		}, 60000);
 	});
 });

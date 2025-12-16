@@ -12,18 +12,18 @@ import {
 } from "./config";
 import { detectStaleReviews } from "./core/blockers";
 import {
-	formatNoActivityWeeklyReport,
-	formatWeeklyReport,
+	formatWeeklyMainEmbed,
+	formatWeeklyThreadContent,
+	getThreadName,
 	type WeeklyDataFlags,
+	type WeeklyHybridData,
 } from "./core/formatting";
 import { calculateBlockerAgeDays, getWeekBoundary } from "./core/weekly-data";
 import { determineRAGStatus } from "./core/weekly-status";
 import type { WeeklyStats } from "./core/weekly-types";
-import { sendToDiscord } from "./discord";
+import { sendHybridToDiscord } from "./discord";
 import { reportLogger } from "./logger";
 import { getWeeklyPRData, setLastWeeklyReportTimestamp } from "./redis";
-
-const MAX_WORDS = 500;
 
 export interface WeeklyReportJob {
 	type: "weekly";
@@ -31,21 +31,10 @@ export interface WeeklyReportJob {
 }
 
 /**
- * Validate word count is under limit.
- */
-function validateWordCount(report: string): {
-	valid: boolean;
-	wordCount: number;
-} {
-	const wordCount = report.split(/\s+/).length;
-	return { valid: wordCount < MAX_WORDS, wordCount };
-}
-
-/**
- * Generate the weekly report content.
+ * Generate the weekly report data.
  */
 export async function generateWeeklyReport(reportDate?: Date): Promise<{
-	content: string | null;
+	data: WeeklyHybridData | null;
 	watermark: string;
 }> {
 	const now = reportDate || new Date();
@@ -87,7 +76,7 @@ export async function generateWeeklyReport(reportDate?: Date): Promise<{
 	) {
 		log.info("No activity for week, generating empty report");
 		return {
-			content: formatNoActivityWeeklyReport(weekBoundary.start),
+			data: null,
 			watermark: latestTimestamp,
 		};
 	}
@@ -169,32 +158,29 @@ export async function generateWeeklyReport(reportDate?: Date): Promise<{
 		contributorCount: contributors.size,
 	};
 
-	// Format report with conditional sections
-	const report = formatWeeklyReport(
-		weekBoundary.start,
+	// Build hybrid data with active blockers for escalation detection
+	const hybridData: WeeklyHybridData = {
+		weekOf: weekBoundary.start,
 		ragStatus,
 		summary,
 		stats,
-		dataFlags,
-	);
-
-	// Validate word count
-	const { valid, wordCount } = validateWordCount(report);
-	if (!valid) {
-		log.warn({ wordCount }, "Weekly report exceeds word limit");
-	}
+		activeBlockers: blockerData.map((b) => ({
+			description: b.reason,
+			owner: b.author,
+			ageDays: b.ageDays,
+		})),
+	};
 
 	log.info(
 		{
 			ragStatus,
 			mergedCount: mergedPRs.size,
 			blockerCount: activeBlockers.length,
-			wordCount,
 		},
 		"Weekly report generated",
 	);
 
-	return { content: report, watermark: latestTimestamp };
+	return { data: hybridData, watermark: latestTimestamp };
 }
 
 /**
@@ -209,15 +195,25 @@ export async function processWeeklyReportJob(
 
 	try {
 		const reportDate = job.data.weekOf ? new Date(job.data.weekOf) : new Date();
-		const { content, watermark } = await generateWeeklyReport(reportDate);
+		const { data, watermark } = await generateWeeklyReport(reportDate);
 
-		if (!content) {
+		if (!data) {
 			log.info("No content to report");
 			await setLastWeeklyReportTimestamp(watermark);
 			return { sent: false };
 		}
 
-		await sendToDiscord(content, "weekly");
+		// Format and send hybrid report (embed + thread)
+		const embed = formatWeeklyMainEmbed(data);
+		const threadContent = formatWeeklyThreadContent(data);
+		const threadName = getThreadName("weekly", data.weekOf);
+
+		await sendHybridToDiscord({
+			embed,
+			threadName,
+			threadContent,
+			type: "weekly",
+		});
 		await setLastWeeklyReportTimestamp(watermark);
 
 		log.info({ watermark }, "Weekly report sent and watermark updated");

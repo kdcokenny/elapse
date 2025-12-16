@@ -13,15 +13,17 @@ export interface WeeklyFormatValidationResult {
 }
 
 /**
- * Validate that a weekly report follows the expected format.
+ * Validate that a weekly report thread content follows the expected format.
+ * Thread content is the full breakdown posted in the Discord thread.
+ *
  * Checks:
- * 1. Header format (Weekly Engineering Summary)
- * 2. Status line (RAG indicator)
- * 3. Top Line / Executive summary
- * 4. Shipped section format (if present)
- * 5. Required sections (BLOCKERS & RISKS, HELP NEEDED, CARRYING INTO NEXT WEEK)
- * 6. Stats footer
- * 7. No raw technical data (SHAs, diffs)
+ * 1. Header format (Full Details — Week of)
+ * 2. Shipped section format (if present)
+ * 3. Required sections (BLOCKERS & RISKS, HELP NEEDED)
+ * 4. Stats footer
+ * 5. No raw technical data (SHAs, diffs)
+ *
+ * Note: RAG status and Top Line are now in the main embed, not thread content.
  */
 export function validateWeeklyFormat(
 	report: string,
@@ -29,26 +31,12 @@ export function validateWeeklyFormat(
 	const errors: string[] = [];
 	const warnings: string[] = [];
 
-	// 1. Header check
-	if (!report.includes("Weekly Engineering Summary")) {
-		errors.push("Missing 'Weekly Engineering Summary' header");
+	// 1. Header check - thread content starts with "Full Details —"
+	if (!report.includes("Full Details —")) {
+		errors.push("Missing 'Full Details —' header");
 	}
 
-	// 2. Status line check (RAG indicator)
-	const hasRAGStatus =
-		report.includes("🟢 On Track") ||
-		report.includes("🟡 At Risk") ||
-		report.includes("🔴 Blocked");
-	if (!hasRAGStatus) {
-		errors.push("Missing RAG status indicator (🟢/🟡/🔴)");
-	}
-
-	// 3. Top Line / Executive summary
-	if (!report.includes("**Top Line:**")) {
-		errors.push("Missing 'Top Line:' executive summary");
-	}
-
-	// 4. Shipped section format (if present and has content)
+	// 2. Shipped section format (if present and has content)
 	if (report.includes("SHIPPED THIS WEEK")) {
 		// Should have bullet points with theme format: "• **Theme** — summary (contributors)"
 		const shippedSection =
@@ -60,7 +48,7 @@ export function validateWeeklyFormat(
 		}
 	}
 
-	// 5. Status sections check (always required - they confirm "all clear" or list issues)
+	// 3. Status sections check (always required - they confirm "all clear" or list issues)
 	const statusSections = ["BLOCKERS & RISKS", "HELP NEEDED"];
 	for (const section of statusSections) {
 		if (!report.includes(section)) {
@@ -68,7 +56,7 @@ export function validateWeeklyFormat(
 		}
 	}
 
-	// 6. Content sections check (conditionally included based on data)
+	// 4. Content sections check (conditionally included based on data)
 	// "Carrying Into Next Week" is only shown when in-progress work exists
 	if (!report.includes("CARRYING INTO NEXT WEEK")) {
 		// Not an error - this section is optional and only appears when in-progress data exists
@@ -77,12 +65,12 @@ export function validateWeeklyFormat(
 		);
 	}
 
-	// 8. Stats footer - should have "PRs merged" at minimum
+	// 5. Stats footer - should have "PRs merged" at minimum
 	if (!report.includes("PRs merged")) {
 		errors.push("Missing stats footer (should include 'PRs merged')");
 	}
 
-	// 9. No raw technical data
+	// 6. No raw technical data
 	if (report.match(/[a-f0-9]{40}/i)) {
 		errors.push("Report contains raw SHA hashes");
 	}
@@ -134,23 +122,44 @@ export function extractWeeklyStats(report: string): {
 }
 
 /**
- * Check if a weekly report has an executive summary that isn't a placeholder.
+ * Check if a weekly report embed has an executive summary that isn't a placeholder.
+ * For hybrid reports, check the embed description for "Top Line:" or "Status:".
  */
 export function hasSubstantiveExecutiveSummary(report: string): boolean {
+	// Try new format first (embed description with Top Line)
 	const topLineMatch = report.match(/\*\*Top Line:\*\*\s*(.+)/);
-	if (!topLineMatch || !topLineMatch[1]) return false;
+	if (topLineMatch?.[1]) {
+		const summary = topLineMatch[1].trim();
 
-	const summary = topLineMatch[1].trim();
+		// Reject empty or placeholder summaries
+		const placeholders = [
+			"No activity",
+			"N/A",
+			"None",
+			"TODO",
+			"TBD",
+			"(none)",
+		];
 
-	// Reject empty or placeholder summaries
-	const placeholders = ["No activity", "N/A", "None", "TODO", "TBD", "(none)"];
-
-	for (const placeholder of placeholders) {
-		if (summary.toLowerCase().includes(placeholder.toLowerCase())) {
-			return false;
+		for (const placeholder of placeholders) {
+			if (summary.toLowerCase().includes(placeholder.toLowerCase())) {
+				return false;
+			}
 		}
+
+		// Should have meaningful content (at least 10 characters)
+		return summary.length >= 10;
 	}
 
-	// Should have meaningful content (at least 10 characters)
-	return summary.length >= 10;
+	// For thread-only validation, check if there's any substantive content
+	// (shipped items, blockers, or help needed sections with content)
+	const hasShippedContent =
+		report.includes("SHIPPED THIS WEEK") &&
+		!!report.match(/SHIPPED THIS WEEK[\s\S]*?•/);
+	const hasBlockerContent =
+		report.includes("BLOCKERS & RISKS") &&
+		!report.includes("• None active") &&
+		!!report.match(/BLOCKERS & RISKS[\s\S]*?•/);
+
+	return hasShippedContent || hasBlockerContent;
 }

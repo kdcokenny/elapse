@@ -26,6 +26,7 @@ import {
 	test,
 } from "bun:test";
 import { translateDiff } from "../../src/ai";
+import { formatWeeklyThreadContent } from "../../src/core/formatting";
 import { getWeekBoundary } from "../../src/core/weekly-data";
 import {
 	addBranchCommit,
@@ -164,8 +165,10 @@ describe("E2E: Weekend Rollover", () => {
 			console.log(`Week 1 boundary: ${week1Boundary.dateStrings.join(", ")}`);
 			expect(week1Boundary.dateStrings).not.toContain("2024-10-20");
 
-			const { content: week1Report } =
-				await generateWeeklyReport(week1ReportDate);
+			const { data: week1Data } = await generateWeeklyReport(week1ReportDate);
+			const week1Report = week1Data
+				? formatWeeklyThreadContent(week1Data)
+				: null;
 
 			console.log(`\n--- Week 1 Report ---`);
 			console.log(week1Report ?? "(no report)");

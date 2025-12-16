@@ -84,6 +84,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { formatDailyThreadContent } from "../../src/core/formatting";
 import { generateReport } from "../../src/daily-reporter";
 // Import production Redis functions for stateful testing (branch-first)
 import {
@@ -267,7 +268,8 @@ describe("E2E: Stateful Week Simulation", () => {
 			// Step 4: Generate report using PR-centric model
 			// Mock Date.now() to return end of report day for realistic age calculations
 			Date.now = () => new Date(`${dateStr}T23:59:59Z`).getTime();
-			const { content: report } = await generateReport(dateStr);
+			const { data } = await generateReport(dateStr);
+			const report = data ? formatDailyThreadContent(data) : null;
 			console.log(`\n--- ${day.toUpperCase()} REPORT ---`);
 			console.log(report ?? "(no report generated)");
 			console.log("--- END REPORT ---\n");
